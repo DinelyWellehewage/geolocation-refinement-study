@@ -1,3 +1,4 @@
+import argparse
 import os
 
 import torch
@@ -8,7 +9,20 @@ from src.models.model import GeoLocationModel
 from src.training.train import train_one_epoch, validate
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--num-workers", type=int, default=2)
+
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
     )
@@ -19,25 +33,22 @@ def main():
         train_csv="geo_dataset/train_split.csv",
         val_csv="geo_dataset/val_split.csv",
         image_dir="geo_dataset/train",
-        batch_size=32,
-        num_workers=2,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
     )
 
-    model = GeoLocationModel()
-    model = model.to(device)
+    model = GeoLocationModel().to(device)
 
     optimizer = AdamW(
         model.parameters(),
-        lr=1e-3,
+        lr=args.lr,
     )
-
-    num_epochs = 5
 
     best_val_distance = float("inf")
 
     os.makedirs("checkpoints", exist_ok=True)
 
-    for epoch in range(num_epochs):
+    for epoch in range(args.epochs):
         train_loss = train_one_epoch(
             model=model,
             dataloader=train_loader,
@@ -52,7 +63,7 @@ def main():
         )
 
         print(
-            f"Epoch {epoch + 1}/{num_epochs} "
+            f"Epoch {epoch + 1}/{args.epochs} "
             f"| Train Loss: {train_loss:.4f} "
             f"| Val Median Haversine: {val_median_km:.2f} km"
         )
