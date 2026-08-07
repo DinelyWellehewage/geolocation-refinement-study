@@ -1,3 +1,5 @@
+import os
+
 import torch
 from torch.optim import AdamW
 
@@ -31,6 +33,10 @@ def main():
 
     num_epochs = 5
 
+    best_val_distance = float("inf")
+
+    os.makedirs("checkpoints", exist_ok=True)
+
     for epoch in range(num_epochs):
         train_loss = train_one_epoch(
             model=model,
@@ -50,6 +56,19 @@ def main():
             f"| Train Loss: {train_loss:.4f} "
             f"| Val Median Haversine: {val_median_km:.2f} km"
         )
+
+        if val_median_km < best_val_distance:
+            best_val_distance = val_median_km
+
+            torch.save(
+                model.state_dict(),
+                "checkpoints/best_model.pth",
+            )
+
+            print(
+                f"Saved new best model "
+                f"({best_val_distance:.2f} km)"
+            )
 
 
 if __name__ == "__main__":

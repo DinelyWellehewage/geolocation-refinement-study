@@ -22,3 +22,5 @@ predictions.csv
 
 # OS files
 .DS_Store
+
+checkpoints/
