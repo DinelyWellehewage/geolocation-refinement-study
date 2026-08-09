@@ -9,7 +9,7 @@
 
 set -e
 
-cd "$(dirname "$0")"
+cd "$SLURM_SUBMIT_DIR"
 
 module load python/3.12-base
 source .venv-cluster/bin/activate
