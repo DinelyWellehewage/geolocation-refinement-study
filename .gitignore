@@ -24,3 +24,8 @@ predictions.csv
 .DS_Store
 
 checkpoints/
+
+
+
+.venv-cluster/
+logs/
