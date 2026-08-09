@@ -3,8 +3,10 @@ import torch
 
 from src.datasets.dataloaders import create_dataloaders
 from src.models.model import GeoLocationModel
-from src.utils.metrics import haversine_distance_km
-
+from src.utils.metrics import (
+    denormalize_coordinates,
+    haversine_distance_km,
+)
 
 def main():
     device = torch.device(
@@ -47,6 +49,9 @@ def main():
 
     predictions = torch.cat(all_predictions)
     targets = torch.cat(all_targets)
+
+    predictions = denormalize_coordinates(predictions)
+    targets = denormalize_coordinates(targets)
 
     distances = haversine_distance_km(
         predictions,
