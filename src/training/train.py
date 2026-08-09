@@ -1,7 +1,10 @@
 import torch
 import torch.nn as nn
 
-from src.utils.metrics import median_haversine_km
+from src.utils.metrics import (
+    denormalize_coordinates,
+    median_haversine_km,
+)
 
 
 def train_one_epoch(model, dataloader, optimizer, device):
@@ -49,6 +52,9 @@ def validate(model, dataloader, device):
 
     all_predictions = torch.cat(all_predictions, dim=0)
     all_targets = torch.cat(all_targets, dim=0)
+
+    all_predictions = denormalize_coordinates(all_predictions)
+    all_targets = denormalize_coordinates(all_targets)
 
     median_distance = median_haversine_km(
         all_predictions,
