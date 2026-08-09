@@ -1,5 +1,19 @@
 import torch
 
+LAT_MEAN = 52.65384082447373
+LAT_STD = 9.87951259488397
+
+LNG_MEAN = 11.316609908569
+LNG_STD = 15.245180654282903
+
+
+def denormalize_coordinates(coords):
+    lat = coords[:, 0] * LAT_STD + LAT_MEAN
+    lng = coords[:, 1] * LNG_STD + LNG_MEAN
+
+    return torch.stack([lat, lng], dim=1)
+
+
 
 def haversine_distance_km(preds, targets):
     """
