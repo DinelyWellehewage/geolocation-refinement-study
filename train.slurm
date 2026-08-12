@@ -9,10 +9,10 @@
 
 set -e
 
-cd "$SLURM_SUBMIT_DIR"
+cd /home/hpc/v123be/v123be51/deep-learning-final-project-geolocation
 
 module load python/3.12-base
-source .venv-cluster/bin/activate
+source /home/hpc/v123be/v123be51/deep-learning-final-project-geolocation/.venv-cluster/bin/activate
 
 echo "Node: $(hostname)"
 echo "Python: $(python --version)"
