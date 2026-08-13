@@ -55,6 +55,7 @@ def main():
         image_dir="geo_dataset/train",
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        seed=args.seed,
     )
 
     model = GeoLocationModel().to(device)
