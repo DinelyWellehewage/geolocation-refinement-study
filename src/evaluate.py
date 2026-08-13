@@ -1,5 +1,5 @@
 import torch
-
+import argparse
 from src.datasets.dataloaders import create_dataloaders
 from src.models.model import GeoLocationModel
 from src.utils.metrics import (
@@ -45,13 +45,26 @@ def evaluate_model(model, dataloader, device):
     print(f"Within 200 km:    {within_200:.2f}%")
     print(f"Within 750 km:    {within_750:.2f}%")
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default="checkpoints/best_model.pth",
+    )
+
+    return parser.parse_args()
 
 def main():
+
+    args = parse_args()
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
     )
 
     print("Using device:", device)
+    print("Checkpoint:", args.checkpoint)
 
     _, val_loader = create_dataloaders(
         train_csv="geo_dataset/train_split.csv",
@@ -65,7 +78,7 @@ def main():
 
     model.load_state_dict(
         torch.load(
-            "checkpoints/best_model.pth",
+            args.checkpoint,
             map_location=device,
         )
     )
