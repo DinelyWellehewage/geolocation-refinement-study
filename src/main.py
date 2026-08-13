@@ -16,6 +16,11 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument(
+        "--checkpoint-name",
+        type=str,
+        default="best_model.pth",
+    )
 
     return parser.parse_args()
 
@@ -48,6 +53,11 @@ def main():
 
     os.makedirs("checkpoints", exist_ok=True)
 
+    checkpoint_path = os.path.join(
+        "checkpoints",
+        args.checkpoint_name,
+    )
+
     for epoch in range(args.epochs):
         train_loss = train_one_epoch(
             model=model,
@@ -73,12 +83,13 @@ def main():
 
             torch.save(
                 model.state_dict(),
-                "checkpoints/best_model.pth",
+                checkpoint_path,
             )
 
             print(
                 f"Saved new best model "
-                f"({best_val_distance:.2f} km)"
+                f"({best_val_distance:.2f} km) "
+                f"to {checkpoint_path}"
             )
 
 
