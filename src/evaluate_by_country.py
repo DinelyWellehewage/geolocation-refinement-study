@@ -1,6 +1,8 @@
 import pandas as pd
 import torch
 
+import argparse
+
 from src.datasets.dataloaders import create_dataloaders
 from src.models.model import GeoLocationModel
 from src.utils.metrics import (
@@ -8,7 +10,19 @@ from src.utils.metrics import (
     haversine_distance_km,
 )
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default="checkpoints/best_model.pth",
+    )
+
+    return parser.parse_args()
+
 def main():
+    args = parse_args()
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
     )
@@ -27,7 +41,7 @@ def main():
 
     model.load_state_dict(
         torch.load(
-            "checkpoints/best_model.pth",
+            args.checkpoint,
             map_location=device,
         )
     )
