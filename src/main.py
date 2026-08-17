@@ -3,6 +3,7 @@ import os
 
 import torch
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from src.datasets.dataloaders import create_dataloaders
 from src.models.model import GeoLocationModel
@@ -65,6 +66,13 @@ def main():
         lr=args.lr,
     )
 
+    scheduler = ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=0.5,
+        patience=3,
+    )
+
     best_val_distance = float("inf")
 
     os.makedirs("checkpoints", exist_ok=True)
@@ -87,6 +95,7 @@ def main():
             dataloader=val_loader,
             device=device,
         )
+        scheduler.step(val_median_km)
 
         print(
             f"Epoch {epoch + 1}/{args.epochs} "
