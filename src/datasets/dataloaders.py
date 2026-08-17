@@ -3,7 +3,7 @@ import random
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-
+from torchvision import transforms
 from src.datasets.dataset import GeoDataset
 
 
@@ -22,14 +22,37 @@ def create_dataloaders(
     num_workers=2,
     seed=42,
 ):
+
+    train_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.ColorJitter(
+            brightness=0.2,
+            contrast=0.2,
+            saturation=0.2,
+        ),
+        transforms.ToTensor(),
+    ])
+
+    val_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+    ])
+
+
+
+
+
     train_dataset = GeoDataset(
         csv_file=train_csv,
         image_dir=image_dir,
+        transform=train_transform,
     )
 
     val_dataset = GeoDataset(
         csv_file=val_csv,
         image_dir=image_dir,
+        transform=val_transform,
     )
 
     generator = torch.Generator()

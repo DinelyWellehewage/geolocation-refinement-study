@@ -4,7 +4,6 @@ import pandas as pd
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
-from torchvision import transforms
 
 
 LAT_MEAN = 52.65384082447373
@@ -15,17 +14,10 @@ LNG_STD = 15.245180654282903
 
 
 class GeoDataset(Dataset):
-    def __init__(self, csv_file, image_dir, transform=None):
+    def __init__(self, csv_file, image_dir, transform):
         self.labels = pd.read_csv(csv_file)
         self.image_dir = Path(image_dir)
-
-        if transform is None:
-            self.transform = transforms.Compose([
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-            ])
-        else:
-            self.transform = transform
+        self.transform = transform
 
     def __len__(self):
         return len(self.labels)
