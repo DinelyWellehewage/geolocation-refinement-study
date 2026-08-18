@@ -97,10 +97,13 @@ def main():
         )
         scheduler.step(val_median_km)
 
+        current_lr = optimizer.param_groups[0]["lr"]
+
         print(
             f"Epoch {epoch + 1}/{args.epochs} "
             f"| Train Loss: {train_loss:.4f} "
             f"| Val Median Haversine: {val_median_km:.2f} km"
+            f"| LR: {current_lr:.6f}"
         )
 
         if val_median_km < best_val_distance:
