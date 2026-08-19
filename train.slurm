@@ -19,4 +19,4 @@ echo "Python: $(python --version)"
 
 python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None')"
 
-python -m src.main --epochs 40 --batch-size 64 --lr 0.001 --num-workers 4 --seed 42 --checkpoint-name normalized_aug_scheduler_40ep_seed42.pth
+python -m src.main --epochs 40 --batch-size 64 --lr 0.001 --num-workers 4 --seed 42 --checkpoint-name normalized_aug_scheduler_haversine_seed42.pth

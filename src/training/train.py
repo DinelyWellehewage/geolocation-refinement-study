@@ -3,9 +3,27 @@ import torch.nn as nn
 
 from src.utils.metrics import (
     denormalize_coordinates,
+    haversine_distance_km,
     median_haversine_km,
 )
 
+def geolocation_loss(predictions, targets, haversine_weight=0.1):
+    mse_loss = nn.functional.mse_loss(
+        predictions,
+        targets,
+    )
+
+    predictions_real = denormalize_coordinates(predictions)
+    targets_real = denormalize_coordinates(targets)
+
+    haversine_loss = haversine_distance_km(
+        predictions_real,
+        targets_real,
+    ).mean()
+
+    haversine_loss = haversine_loss / 1000.0
+
+    return mse_loss + haversine_weight * haversine_loss
 
 def train_one_epoch(model, dataloader, optimizer, device):
     model.train()
@@ -21,7 +39,10 @@ def train_one_epoch(model, dataloader, optimizer, device):
 
         predictions = model(images)
 
-        loss = loss_fn(predictions, targets)
+        loss = geolocation_loss(
+            predictions,
+            targets,
+        )
 
         loss.backward()
 
