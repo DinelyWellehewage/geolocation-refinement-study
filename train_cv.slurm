@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=geo-cv-f0
+#SBATCH --job-name=geo-cv-f1
 #SBATCH --partition=a40
 #SBATCH --gres=gpu:a40:1
 #SBATCH --time=04:00:00
@@ -20,7 +20,7 @@ echo "Python: $(python --version)"
 python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None')"
 
 python -m src.main_cv \
-    --fold 0 \
+    --fold 1 \
     --epochs 40 \
     --batch-size 64 \
     --lr 0.001 \
