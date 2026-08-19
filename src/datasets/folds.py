@@ -1,5 +1,4 @@
 import pandas as pd
-from src.datasets.folds import create_fold_split
 
 
 def create_fold_split(
@@ -13,8 +12,15 @@ def create_fold_split(
     train_df = df[df["fold"] != fold].copy()
     val_df = df[df["fold"] == fold].copy()
 
-    train_df.to_csv(train_output, index=False)
-    val_df.to_csv(val_output, index=False)
+    train_df.to_csv(
+        train_output,
+        index=False,
+    )
+
+    val_df.to_csv(
+        val_output,
+        index=False,
+    )
 
     print(f"Fold: {fold}")
     print(f"Training samples: {len(train_df)}")
