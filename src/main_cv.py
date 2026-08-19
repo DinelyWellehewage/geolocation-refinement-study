@@ -10,8 +10,10 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from src.datasets.dataloaders import create_dataloaders
 from src.datasets.folds import create_fold_split
 from src.models.model import GeoLocationModel
-from src.training.train import train_one_epoch, validate
-
+from src.training.train_cv import (
+    train_one_epoch_cv,
+    validate_cv,
+)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -141,7 +143,7 @@ def main():
     # ---------------------------------------------------------
 
     for epoch in range(args.epochs):
-        train_loss = train_one_epoch(
+        train_loss = train_one_epoch_cv(
             model=model,
             dataloader=train_loader,
             optimizer=optimizer,
@@ -149,7 +151,7 @@ def main():
             haversine_weight=args.haversine_weight,
         )
 
-        val_median_km = validate(
+        val_median_km = validate_cv(
             model=model,
             dataloader=val_loader,
             device=device,
