@@ -18,7 +18,7 @@ COUNTRY_TO_INDEX = {
     "Spain": 8,
     "Sweden": 9,
     "Turkey": 10,
-    "Ukraine": 11,
+    "United_Kingdom": 11,
 }
 
 
@@ -32,6 +32,17 @@ class GeoClusterCountryDataset(Dataset):
         self.labels = pd.read_csv(csv_file)
         self.image_dir = Path(image_dir)
         self.transform = transform
+
+        unknown_countries = (
+            set(self.labels["country"].unique())
+            - set(COUNTRY_TO_INDEX.keys())
+        )
+
+        if unknown_countries:
+            raise ValueError(
+                "Unknown countries found in dataset: "
+                f"{sorted(unknown_countries)}"
+            )
 
     def __len__(self):
         return len(self.labels)
