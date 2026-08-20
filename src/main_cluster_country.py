@@ -54,6 +54,12 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=1e-4,
+    )
+
+    parser.add_argument(
         "--num-workers",
         type=int,
         default=4,
@@ -97,7 +103,7 @@ def parse_args():
     parser.add_argument(
         "--checkpoint-name",
         type=str,
-        default="cluster64_country_geo_seed42.pth",
+        default="cluster64_country_ls01_wd1e4_seed42.pth",
     )
 
     return parser.parse_args()
@@ -126,8 +132,15 @@ def xyz_to_latlng(xyz):
     z = xyz[:, 2]
 
     lng = np.arctan2(y, x)
-    hyp = np.sqrt(x**2 + y**2)
-    lat = np.arctan2(z, hyp)
+
+    hyp = np.sqrt(
+        x**2 + y**2
+    )
+
+    lat = np.arctan2(
+        z,
+        hyp,
+    )
 
     return np.stack(
         [
@@ -151,14 +164,18 @@ def main():
 
     print("Clusters:", k)
     print("Countries:", args.num_countries)
+    print("Learning rate:", args.lr)
+    print("Weight decay:", args.weight_decay)
     print("Country weight:", args.country_weight)
     print("Smoothing mode:", args.smoothing_mode)
     print("Label smoothing:", args.label_smoothing)
+
     print(
         "Geographic temperature:",
         args.geographic_temperature_km,
         "km",
     )
+
     print("Random seed:", args.seed)
 
     device = torch.device(
@@ -217,6 +234,7 @@ def main():
     optimizer = AdamW(
         model.parameters(),
         lr=args.lr,
+        weight_decay=args.weight_decay,
     )
 
     scheduler = ReduceLROnPlateau(
