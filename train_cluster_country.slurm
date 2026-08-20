@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=geo-cons-sweep
+#SBATCH --job-name=geo-country-sweep
 #SBATCH --partition=a40
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
@@ -17,19 +17,19 @@ mkdir -p checkpoints/cluster_country
 
 python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None')"
 
-for CW in 0.01 0.05 0.10
+for CW in 0.1 0.3 0.5
 do
-    if [ "$CW" = "0.01" ]; then
-        NAME="cons001"
-    elif [ "$CW" = "0.05" ]; then
-        NAME="cons005"
+    if [ "$CW" = "0.1" ]; then
+        NAME="cw01"
+    elif [ "$CW" = "0.3" ]; then
+        NAME="cw03"
     else
-        NAME="cons010"
+        NAME="cw05"
     fi
 
     echo
     echo "========================================"
-    echo "STARTING CONSISTENCY WEIGHT: $CW"
+    echo "STARTING COUNTRY WEIGHT: $CW"
     echo "========================================"
 
     python -m src.main_cluster_country \
@@ -41,23 +41,23 @@ do
         --weight-decay 0.001 \
         --num-workers 4 \
         --seed 42 \
-        --country-weight 0.2 \
-        --consistency-weight "$CW" \
+        --country-weight "$CW" \
+        --consistency-weight 0.05 \
         --smoothing-mode ordinary \
         --label-smoothing 0.1 \
-        --checkpoint-name "cluster64_country_ls01_wd1e3_${NAME}_seed42.pth"
+        --checkpoint-name "cluster64_ls01_wd1e3_cons005_${NAME}_seed42.pth"
 
     STATUS=$?
 
     if [ "$STATUS" -ne 0 ]; then
-        echo "Training failed for consistency weight $CW"
+        echo "Training failed for country weight $CW"
         exit "$STATUS"
     fi
 
-    echo "FINISHED CONSISTENCY WEIGHT: $CW"
+    echo "FINISHED COUNTRY WEIGHT: $CW"
 done
 
 echo
 echo "========================================"
-echo "CONSISTENCY SWEEP COMPLETE"
+echo "COUNTRY WEIGHT SWEEP COMPLETE"
 echo "========================================"
