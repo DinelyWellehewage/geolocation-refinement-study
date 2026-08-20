@@ -4,8 +4,15 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.datasets.dataloaders_cluster import create_cluster_dataloaders
-from src.models.model_cluster import GeoClusterModel
+from src.datasets.dataloaders_cluster import (
+    create_cluster_dataloaders,
+)
+from src.models.model_cluster import (
+    GeoClusterModel,
+)
+from src.models.model_cluster_country import (
+    GeoClusterCountryModel,
+)
 from src.utils.metrics import haversine_distance_km
 
 
@@ -33,16 +40,23 @@ def xyz_to_latlng(xyz):
     )
 
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default=(
-            "checkpoints/cluster64/"
-            "cluster64_strongaug_seed42.pth"
-        ),
+        required=True,
+    )
+
+    parser.add_argument(
+        "--model-type",
+        type=str,
+        choices=[
+            "cluster",
+            "cluster_country",
+        ],
+        required=True,
     )
 
     parser.add_argument(
@@ -52,12 +66,68 @@ def main():
     )
 
     parser.add_argument(
+        "--num-countries",
+        type=int,
+        default=12,
+    )
+
+    parser.add_argument(
         "--batch-size",
         type=int,
         default=64,
     )
 
-    args = parser.parse_args()
+    parser.add_argument(
+        "--output-prefix",
+        type=str,
+        default=None,
+    )
+
+    return parser.parse_args()
+
+
+def build_model(
+    model_type,
+    num_clusters,
+    num_countries,
+):
+    if model_type == "cluster":
+        return GeoClusterModel(
+            num_clusters=num_clusters,
+        )
+
+    if model_type == "cluster_country":
+        return GeoClusterCountryModel(
+            num_clusters=num_clusters,
+            num_countries=num_countries,
+        )
+
+    raise ValueError(
+        f"Unknown model type: {model_type}"
+    )
+
+
+def get_cluster_logits(
+    model,
+    images,
+    model_type,
+):
+    outputs = model(images)
+
+    if model_type == "cluster":
+        return outputs
+
+    if model_type == "cluster_country":
+        cluster_logits, _ = outputs
+        return cluster_logits
+
+    raise ValueError(
+        f"Unknown model type: {model_type}"
+    )
+
+
+def main():
+    args = parse_args()
 
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
@@ -65,6 +135,7 @@ def main():
 
     print("Using device:", device)
     print("Checkpoint:", args.checkpoint)
+    print("Model type:", args.model_type)
 
     _, val_loader = create_cluster_dataloaders(
         train_csv="geo_dataset/train_cluster64.csv",
@@ -75,15 +146,19 @@ def main():
         seed=42,
     )
 
-    model = GeoClusterModel(
+    model = build_model(
+        model_type=args.model_type,
         num_clusters=args.num_clusters,
+        num_countries=args.num_countries,
     ).to(device)
 
+    state_dict = torch.load(
+        args.checkpoint,
+        map_location=device,
+    )
+
     model.load_state_dict(
-        torch.load(
-            args.checkpoint,
-            map_location=device,
-        )
+        state_dict
     )
 
     model.eval()
@@ -95,9 +170,13 @@ def main():
         for images, clusters in val_loader:
             images = images.to(device)
 
-            logits = model(images)
+            cluster_logits = get_cluster_logits(
+                model=model,
+                images=images,
+                model_type=args.model_type,
+            )
 
-            predictions = logits.argmax(
+            predictions = cluster_logits.argmax(
                 dim=1
             )
 
@@ -247,9 +326,27 @@ def main():
             pred_cluster,
         ] += 1
 
+    output_prefix = args.output_prefix
+
+    if output_prefix is None:
+        output_prefix = (
+            "cluster64_country"
+            if args.model_type == "cluster_country"
+            else "cluster64"
+        )
+
+    confusion_path = (
+        f"geo_dataset/"
+        f"{output_prefix}_confusion.npy"
+    )
+
+    analysis_path = (
+        f"geo_dataset/"
+        f"{output_prefix}_error_analysis.csv"
+    )
+
     np.save(
-        "geo_dataset/"
-        "cluster64_confusion.npy",
+        confusion_path,
         confusion,
     )
 
@@ -286,20 +383,14 @@ def main():
     )
 
     results.to_csv(
-        "geo_dataset/"
-        "cluster64_error_analysis.csv",
+        analysis_path,
         index=False,
     )
 
     print()
     print("Saved:")
-    print(
-        "geo_dataset/cluster64_confusion.npy"
-    )
-    print(
-        "geo_dataset/"
-        "cluster64_error_analysis.csv"
-    )
+    print(confusion_path)
+    print(analysis_path)
 
 
 if __name__ == "__main__":
