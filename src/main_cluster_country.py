@@ -14,6 +14,7 @@ from src.models.model_cluster_country import (
     GeoClusterCountryModel,
 )
 from src.training.train_cluster_country import (
+    build_consistency_loss,
     train_one_epoch_cluster_country,
     validate_cluster_country,
 )
@@ -56,7 +57,7 @@ def parse_args():
     parser.add_argument(
         "--weight-decay",
         type=float,
-        default=1e-4,
+        default=1e-3,
     )
 
     parser.add_argument(
@@ -75,6 +76,12 @@ def parse_args():
         "--country-weight",
         type=float,
         default=0.2,
+    )
+
+    parser.add_argument(
+        "--consistency-weight",
+        type=float,
+        default=0.0,
     )
 
     parser.add_argument(
@@ -103,7 +110,9 @@ def parse_args():
     parser.add_argument(
         "--checkpoint-name",
         type=str,
-        default="cluster64_country_ls01_wd1e4_seed42.pth",
+        default=(
+            "cluster64_country_ls01_consistency_seed42.pth"
+        ),
     )
 
     return parser.parse_args()
@@ -132,15 +141,8 @@ def xyz_to_latlng(xyz):
     z = xyz[:, 2]
 
     lng = np.arctan2(y, x)
-
-    hyp = np.sqrt(
-        x**2 + y**2
-    )
-
-    lat = np.arctan2(
-        z,
-        hyp,
-    )
+    hyp = np.sqrt(x**2 + y**2)
+    lat = np.arctan2(z, hyp)
 
     return np.stack(
         [
@@ -167,6 +169,10 @@ def main():
     print("Learning rate:", args.lr)
     print("Weight decay:", args.weight_decay)
     print("Country weight:", args.country_weight)
+    print(
+        "Consistency weight:",
+        args.consistency_weight,
+    )
     print("Smoothing mode:", args.smoothing_mode)
     print("Label smoothing:", args.label_smoothing)
 
@@ -231,6 +237,16 @@ def main():
         centers_path
     )
 
+    consistency_loss_fn = None
+
+    if args.consistency_weight > 0:
+        consistency_loss_fn = build_consistency_loss(
+            train_csv=train_csv,
+            num_clusters=args.num_clusters,
+            num_countries=args.num_countries,
+            device=device,
+        )
+
     optimizer = AdamW(
         model.parameters(),
         lr=args.lr,
@@ -292,6 +308,12 @@ def main():
                 optimizer=optimizer,
                 device=device,
                 country_weight=args.country_weight,
+                consistency_weight=(
+                    args.consistency_weight
+                ),
+                consistency_loss_fn=(
+                    consistency_loss_fn
+                ),
                 smoothing_mode=args.smoothing_mode,
                 centers_xyz=centers_xyz,
                 label_smoothing=args.label_smoothing,
@@ -372,6 +394,8 @@ def main():
             f"{train_metrics['cluster_loss']:.4f} "
             f"| Country Loss: "
             f"{train_metrics['country_loss']:.4f} "
+            f"| Consistency Loss: "
+            f"{train_metrics['consistency_loss']:.4f} "
             f"| Train Cluster Acc: "
             f"{train_metrics['cluster_accuracy'] * 100:.2f}% "
             f"| Train Country Acc: "
