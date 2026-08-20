@@ -208,6 +208,10 @@ def main():
         "geo_dataset/val_cluster64.csv"
     )
 
+    train_df = pd.read_csv(
+        "geo_dataset/train_cluster64.csv"
+    )
+
     true_coordinates = torch.tensor(
         val_df[
             ["lat", "lng"]
@@ -309,6 +313,136 @@ def main():
         f"{(distances < 750).mean() * 100:.2f}%",
     )
 
+    # --------------------------------------------------
+    # Map each cluster to its dominant training country.
+    # --------------------------------------------------
+
+    cluster_to_country = {}
+
+    for cluster_id in range(
+        args.num_clusters
+    ):
+        cluster_rows = train_df[
+            train_df["geo_cluster"]
+            == cluster_id
+        ]
+
+        if len(cluster_rows) == 0:
+            cluster_to_country[
+                cluster_id
+            ] = "UNKNOWN"
+            continue
+
+        dominant_country = (
+            cluster_rows["country"]
+            .value_counts()
+            .idxmax()
+        )
+
+        cluster_to_country[
+            cluster_id
+        ] = dominant_country
+
+    true_countries = (
+        val_df["country"]
+        .astype(str)
+        .values
+    )
+
+    predicted_countries = np.array(
+        [
+            cluster_to_country[
+                int(cluster_id)
+            ]
+            for cluster_id
+            in predicted_clusters
+        ]
+    )
+
+    same_country = (
+        predicted_countries
+        == true_countries
+    )
+
+    catastrophic_same_country = (
+        catastrophic_wrong
+        & same_country
+    )
+
+    catastrophic_cross_country = (
+        catastrophic_wrong
+        & ~same_country
+    )
+
+    catastrophic_total = (
+        catastrophic_wrong.sum()
+    )
+
+    print()
+    print(
+        "=== Catastrophic error country analysis ==="
+    )
+
+    print(
+        "Catastrophic same-country:",
+        catastrophic_same_country.sum(),
+        (
+            f"({catastrophic_same_country.sum() / catastrophic_total * 100:.2f}% "
+            "of catastrophic errors)"
+            if catastrophic_total > 0
+            else "(0.00%)"
+        ),
+    )
+
+    print(
+        "Catastrophic cross-country:",
+        catastrophic_cross_country.sum(),
+        (
+            f"({catastrophic_cross_country.sum() / catastrophic_total * 100:.2f}% "
+            "of catastrophic errors)"
+            if catastrophic_total > 0
+            else "(0.00%)"
+        ),
+    )
+
+    catastrophic_pairs = pd.DataFrame(
+        {
+            "true_country": (
+                true_countries[
+                    catastrophic_wrong
+                ]
+            ),
+            "predicted_country": (
+                predicted_countries[
+                    catastrophic_wrong
+                ]
+            ),
+        }
+    )
+
+    pair_counts = (
+        catastrophic_pairs
+        .value_counts()
+        .reset_index(
+            name="count"
+        )
+        .sort_values(
+            "count",
+            ascending=False,
+        )
+    )
+
+    print()
+    print(
+        "=== Top catastrophic country pairs ==="
+    )
+
+    print(
+        pair_counts.head(20).to_string(
+            index=False
+        )
+    )
+
     confusion = np.zeros(
         (
             args.num_clusters,
@@ -331,7 +465,8 @@ def main():
     if output_prefix is None:
         output_prefix = (
             "cluster64_country"
-            if args.model_type == "cluster_country"
+            if args.model_type
+            == "cluster_country"
             else "cluster64"
         )
 
@@ -343,6 +478,11 @@ def main():
     analysis_path = (
         f"geo_dataset/"
         f"{output_prefix}_error_analysis.csv"
+    )
+
+    pair_path = (
+        f"geo_dataset/"
+        f"{output_prefix}_catastrophic_country_pairs.csv"
     )
 
     np.save(
@@ -357,12 +497,20 @@ def main():
     ] = predicted_clusters
 
     results[
+        "predicted_country"
+    ] = predicted_countries
+
+    results[
         "distance_km"
     ] = distances
 
     results[
         "correct_cluster"
     ] = correct_cluster
+
+    results[
+        "same_country"
+    ] = same_country
 
     results[
         "error_category"
@@ -387,10 +535,16 @@ def main():
         index=False,
     )
 
+    pair_counts.to_csv(
+        pair_path,
+        index=False,
+    )
+
     print()
     print("Saved:")
     print(confusion_path)
     print(analysis_path)
+    print(pair_path)
 
 
 if __name__ == "__main__":
