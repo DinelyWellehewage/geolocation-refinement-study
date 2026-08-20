@@ -1,28 +1,27 @@
 #!/bin/bash
-#SBATCH --job-name=geo-cluster
+
+#SBATCH --job-name=geo-clust64-aug
 #SBATCH --partition=a40
-#SBATCH --gres=gpu:a40:1
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=16
 #SBATCH --time=04:00:00
-#SBATCH --cpus-per-task=4
 #SBATCH --output=logs/train_%j.out
 #SBATCH --error=logs/train_%j.err
 
-set -e
+cd ~/deep-learning-final-project-geolocation
 
-cd /home/hpc/v123be/v123be51/deep-learning-final-project-geolocation
+source .venv-cluster/bin/activate
 
-module load python/3.12-base
-source /home/hpc/v123be/v123be51/deep-learning-final-project-geolocation/.venv-cluster/bin/activate
-
-echo "Node: $(hostname)"
-echo "Python: $(python --version)"
+mkdir -p logs
+mkdir -p checkpoints/cluster64_aug
 
 python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None')"
 
 python -m src.main_cluster_generic \
-    --num-clusters 80 \
+    --num-clusters 64 \
     --epochs 40 \
     --batch-size 64 \
     --lr 0.001 \
     --num-workers 4 \
-    --seed 42
+    --seed 42 \
+    --checkpoint-name cluster64_strongaug_seed42.pth

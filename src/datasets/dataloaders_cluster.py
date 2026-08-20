@@ -24,18 +24,40 @@ def create_cluster_dataloaders(
     seed=42,
 ):
     train_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.ColorJitter(
-            brightness=0.2,
-            contrast=0.2,
-            saturation=0.2,
+        transforms.RandomResizedCrop(
+            size=(224, 224),
+            scale=(0.75, 1.0),
+            ratio=(0.9, 1.1),
         ),
+
+        transforms.RandomHorizontalFlip(
+            p=0.5,
+        ),
+
+        transforms.ColorJitter(
+            brightness=0.3,
+            contrast=0.3,
+            saturation=0.3,
+            hue=0.05,
+        ),
+
+        transforms.RandomGrayscale(
+            p=0.1,
+        ),
+
         transforms.ToTensor(),
+
+        transforms.RandomErasing(
+            p=0.25,
+            scale=(0.02, 0.15),
+            ratio=(0.5, 2.0),
+        ),
     ])
 
     val_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize(
+            (224, 224)
+        ),
         transforms.ToTensor(),
     ])
 
