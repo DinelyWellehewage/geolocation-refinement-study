@@ -3,7 +3,7 @@ from torchvision.models import mobilenet_v3_large
 
 
 class GeoClusterModel(nn.Module):
-    def __init__(self, num_clusters=64):
+    def __init__(self, num_clusters):
         super().__init__()
 
         self.model = mobilenet_v3_large(
