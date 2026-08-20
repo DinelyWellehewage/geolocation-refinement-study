@@ -48,9 +48,15 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--cluster-label-smoothing",
+        type=float,
+        default=0.1,
+    )
+
+    parser.add_argument(
         "--checkpoint-name",
         type=str,
-        default="cluster64_country_seed42.pth",
+        default="cluster64_country_ls01_seed42.pth",
     )
 
     return parser.parse_args()
@@ -79,15 +85,8 @@ def xyz_to_latlng(xyz):
     z = xyz[:, 2]
 
     lng = np.arctan2(y, x)
-
-    hyp = np.sqrt(
-        x**2 + y**2
-    )
-
-    lat = np.arctan2(
-        z,
-        hyp,
-    )
+    hyp = np.sqrt(x**2 + y**2)
+    lat = np.arctan2(z, hyp)
 
     return np.stack(
         [
@@ -112,6 +111,10 @@ def main():
     print("Clusters:", k)
     print("Countries:", args.num_countries)
     print("Country weight:", args.country_weight)
+    print(
+        "Cluster label smoothing:",
+        args.cluster_label_smoothing,
+    )
     print("Random seed:", args.seed)
 
     device = torch.device(
@@ -222,6 +225,9 @@ def main():
             optimizer=optimizer,
             device=device,
             country_weight=args.country_weight,
+            cluster_label_smoothing=(
+                args.cluster_label_smoothing
+            ),
         )
 
         val_metrics = validate_cluster_country(

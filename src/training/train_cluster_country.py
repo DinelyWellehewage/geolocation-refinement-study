@@ -8,10 +8,14 @@ def train_one_epoch_cluster_country(
     optimizer,
     device,
     country_weight=0.2,
+    cluster_label_smoothing=0.1,
 ):
     model.train()
 
-    cluster_loss_fn = nn.CrossEntropyLoss()
+    cluster_loss_fn = nn.CrossEntropyLoss(
+        label_smoothing=cluster_label_smoothing,
+    )
+
     country_loss_fn = nn.CrossEntropyLoss()
 
     total_loss = 0.0
