@@ -1,20 +1,21 @@
 #!/bin/bash
-
 #SBATCH --job-name=geo-cluster36
 #SBATCH --partition=a40
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=32G
+#SBATCH --gres=gpu:a40:1
 #SBATCH --time=04:00:00
+#SBATCH --cpus-per-task=4
 #SBATCH --output=logs/train_%j.out
 #SBATCH --error=logs/train_%j.err
 
-cd ~/deep-learning-final-project-geolocation
+set -e
 
-source .venv-cluster/bin/activate
+cd /home/hpc/v123be/v123be51/deep-learning-final-project-geolocation
 
-mkdir -p logs
-mkdir -p checkpoints/cluster36
+module load python/3.12-base
+source /home/hpc/v123be/v123be51/deep-learning-final-project-geolocation/.venv-cluster/bin/activate
+
+echo "Node: $(hostname)"
+echo "Python: $(python --version)"
 
 python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None')"
 
