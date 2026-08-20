@@ -1,3 +1,22 @@
+#!/bin/bash
+
+#SBATCH --job-name=geo-wd-sweep
+#SBATCH --partition=a40
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=04:00:00
+#SBATCH --output=logs/train_%j.out
+#SBATCH --error=logs/train_%j.err
+
+cd ~/deep-learning-final-project-geolocation || exit 1
+
+source .venv-cluster/bin/activate
+
+mkdir -p logs
+mkdir -p checkpoints/cluster_country
+
+python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None')"
+
 for WD in 0 0.0001 0.001
 do
     if [ "$WD" = "0" ]; then
@@ -29,10 +48,15 @@ do
 
     STATUS=$?
 
-    if [ $STATUS -ne 0 ]; then
+    if [ "$STATUS" -ne 0 ]; then
         echo "Training failed for weight decay $WD"
-        exit $STATUS
+        exit "$STATUS"
     fi
 
     echo "FINISHED WEIGHT DECAY: $WD"
 done
+
+echo
+echo "========================================"
+echo "WEIGHT DECAY SWEEP COMPLETE"
+echo "========================================"
