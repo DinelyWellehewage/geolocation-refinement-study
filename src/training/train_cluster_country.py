@@ -1,6 +1,36 @@
 import torch
 import torch.nn as nn
 
+from src.training.geographic_label_smoothing import (
+    GeographicLabelSmoothingLoss,
+)
+
+
+def build_cluster_loss(
+    smoothing_mode,
+    centers_xyz,
+    label_smoothing,
+    geographic_temperature_km,
+):
+    if smoothing_mode == "none":
+        return nn.CrossEntropyLoss()
+
+    if smoothing_mode == "ordinary":
+        return nn.CrossEntropyLoss(
+            label_smoothing=label_smoothing,
+        )
+
+    if smoothing_mode == "geographic":
+        return GeographicLabelSmoothingLoss(
+            centers_xyz=centers_xyz,
+            smoothing=label_smoothing,
+            temperature_km=geographic_temperature_km,
+        )
+
+    raise ValueError(
+        f"Unknown smoothing mode: {smoothing_mode}"
+    )
+
 
 def train_one_epoch_cluster_country(
     model,
@@ -8,13 +38,30 @@ def train_one_epoch_cluster_country(
     optimizer,
     device,
     country_weight=0.2,
-    cluster_label_smoothing=0.1,
+    smoothing_mode="ordinary",
+    centers_xyz=None,
+    label_smoothing=0.1,
+    geographic_temperature_km=500.0,
 ):
     model.train()
 
-    cluster_loss_fn = nn.CrossEntropyLoss(
-        label_smoothing=cluster_label_smoothing,
+    if smoothing_mode == "geographic":
+        if centers_xyz is None:
+            raise ValueError(
+                "centers_xyz is required for "
+                "geographic label smoothing."
+            )
+
+    cluster_loss_fn = build_cluster_loss(
+        smoothing_mode=smoothing_mode,
+        centers_xyz=centers_xyz,
+        label_smoothing=label_smoothing,
+        geographic_temperature_km=(
+            geographic_temperature_km
+        ),
     )
+
+    cluster_loss_fn = cluster_loss_fn.to(device)
 
     country_loss_fn = nn.CrossEntropyLoss()
 
@@ -79,10 +126,18 @@ def train_one_epoch_cluster_country(
 
     return {
         "total_loss": total_loss / num_batches,
-        "cluster_loss": total_cluster_loss / num_batches,
-        "country_loss": total_country_loss / num_batches,
-        "cluster_accuracy": cluster_correct / total,
-        "country_accuracy": country_correct / total,
+        "cluster_loss": (
+            total_cluster_loss / num_batches
+        ),
+        "country_loss": (
+            total_country_loss / num_batches
+        ),
+        "cluster_accuracy": (
+            cluster_correct / total
+        ),
+        "country_accuracy": (
+            country_correct / total
+        ),
     }
 
 
@@ -146,8 +201,12 @@ def validate_cluster_country(
             )
 
     return {
-        "cluster_accuracy": cluster_correct / total,
-        "country_accuracy": country_correct / total,
+        "cluster_accuracy": (
+            cluster_correct / total
+        ),
+        "country_accuracy": (
+            country_correct / total
+        ),
         "cluster_predictions": torch.cat(
             all_cluster_predictions
         ),

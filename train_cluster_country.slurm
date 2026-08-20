@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=geo-clust-country-ls
+#SBATCH --job-name=geo-clust-country-geo
 #SBATCH --partition=a40
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
@@ -26,5 +26,7 @@ python -m src.main_cluster_country \
     --num-workers 4 \
     --seed 42 \
     --country-weight 0.2 \
-    --cluster-label-smoothing 0.1 \
-    --checkpoint-name cluster64_country_ls01_seed42.pth
+    --smoothing-mode geographic \
+    --label-smoothing 0.1 \
+    --geographic-temperature-km 500 \
+    --checkpoint-name cluster64_country_geo500_seed42.pth

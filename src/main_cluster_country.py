@@ -35,11 +35,35 @@ def parse_args():
         default=12,
     )
 
-    parser.add_argument("--epochs", type=int, default=40)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=40,
+    )
+
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=64,
+    )
+
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=1e-3,
+    )
+
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+    )
+
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+    )
 
     parser.add_argument(
         "--country-weight",
@@ -48,15 +72,32 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--cluster-label-smoothing",
+        "--smoothing-mode",
+        type=str,
+        choices=[
+            "none",
+            "ordinary",
+            "geographic",
+        ],
+        default="ordinary",
+    )
+
+    parser.add_argument(
+        "--label-smoothing",
         type=float,
         default=0.1,
     )
 
     parser.add_argument(
+        "--geographic-temperature-km",
+        type=float,
+        default=500.0,
+    )
+
+    parser.add_argument(
         "--checkpoint-name",
         type=str,
-        default="cluster64_country_ls01_seed42.pth",
+        default="cluster64_country_geo_seed42.pth",
     )
 
     return parser.parse_args()
@@ -111,14 +152,19 @@ def main():
     print("Clusters:", k)
     print("Countries:", args.num_countries)
     print("Country weight:", args.country_weight)
+    print("Smoothing mode:", args.smoothing_mode)
+    print("Label smoothing:", args.label_smoothing)
     print(
-        "Cluster label smoothing:",
-        args.cluster_label_smoothing,
+        "Geographic temperature:",
+        args.geographic_temperature_km,
+        "km",
     )
     print("Random seed:", args.seed)
 
     device = torch.device(
-        "cuda" if torch.cuda.is_available() else "cpu"
+        "cuda"
+        if torch.cuda.is_available()
+        else "cpu"
     )
 
     print("Using device:", device)
@@ -132,7 +178,8 @@ def main():
     )
 
     centers_path = (
-        f"geo_dataset/cluster{k}_centers_xyz.npy"
+        f"geo_dataset/"
+        f"cluster{k}_centers_xyz.npy"
     )
 
     train_loader, val_loader = (
@@ -157,9 +204,14 @@ def main():
     )
 
     print("Parameter count:", num_params)
+
     print(
         "Under 5 million:",
         num_params <= 5_000_000,
+    )
+
+    centers_xyz = np.load(
+        centers_path
     )
 
     optimizer = AdamW(
@@ -172,10 +224,6 @@ def main():
         mode="min",
         factor=0.5,
         patience=3,
-    )
-
-    centers_xyz = np.load(
-        centers_path
     )
 
     centers_latlng = xyz_to_latlng(
@@ -219,21 +267,28 @@ def main():
     best_median_km = float("inf")
 
     for epoch in range(args.epochs):
-        train_metrics = train_one_epoch_cluster_country(
-            model=model,
-            dataloader=train_loader,
-            optimizer=optimizer,
-            device=device,
-            country_weight=args.country_weight,
-            cluster_label_smoothing=(
-                args.cluster_label_smoothing
-            ),
+        train_metrics = (
+            train_one_epoch_cluster_country(
+                model=model,
+                dataloader=train_loader,
+                optimizer=optimizer,
+                device=device,
+                country_weight=args.country_weight,
+                smoothing_mode=args.smoothing_mode,
+                centers_xyz=centers_xyz,
+                label_smoothing=args.label_smoothing,
+                geographic_temperature_km=(
+                    args.geographic_temperature_km
+                ),
+            )
         )
 
-        val_metrics = validate_cluster_country(
-            model=model,
-            dataloader=val_loader,
-            device=device,
+        val_metrics = (
+            validate_cluster_country(
+                model=model,
+                dataloader=val_loader,
+                device=device,
+            )
         )
 
         predicted_clusters = (
@@ -242,9 +297,11 @@ def main():
             ].numpy()
         )
 
-        predicted_coordinates = centers_latlng[
-            predicted_clusters
-        ]
+        predicted_coordinates = (
+            centers_latlng[
+                predicted_clusters
+            ]
+        )
 
         predicted_coordinates = torch.tensor(
             predicted_coordinates,
@@ -285,18 +342,26 @@ def main():
         )
 
         current_lr = (
-            optimizer.param_groups[0]["lr"]
+            optimizer
+            .param_groups[0]["lr"]
         )
 
         print(
             f"Epoch {epoch + 1}/{args.epochs} "
-            f"| Total Loss: {train_metrics['total_loss']:.4f} "
-            f"| Cluster Loss: {train_metrics['cluster_loss']:.4f} "
-            f"| Country Loss: {train_metrics['country_loss']:.4f} "
-            f"| Train Cluster Acc: {train_metrics['cluster_accuracy'] * 100:.2f}% "
-            f"| Train Country Acc: {train_metrics['country_accuracy'] * 100:.2f}% "
-            f"| Val Cluster Acc: {val_metrics['cluster_accuracy'] * 100:.2f}% "
-            f"| Val Country Acc: {val_metrics['country_accuracy'] * 100:.2f}% "
+            f"| Total Loss: "
+            f"{train_metrics['total_loss']:.4f} "
+            f"| Cluster Loss: "
+            f"{train_metrics['cluster_loss']:.4f} "
+            f"| Country Loss: "
+            f"{train_metrics['country_loss']:.4f} "
+            f"| Train Cluster Acc: "
+            f"{train_metrics['cluster_accuracy'] * 100:.2f}% "
+            f"| Train Country Acc: "
+            f"{train_metrics['country_accuracy'] * 100:.2f}% "
+            f"| Val Cluster Acc: "
+            f"{val_metrics['cluster_accuracy'] * 100:.2f}% "
+            f"| Val Country Acc: "
+            f"{val_metrics['country_accuracy'] * 100:.2f}% "
             f"| Median: {median_km:.2f} km "
             f"| Mean: {mean_km:.2f} km "
             f"| <200: {within_200:.2f}% "
