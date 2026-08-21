@@ -220,6 +220,11 @@ def parse_args():
         default=64,
     )
 
+    parser.add_argument(
+        "--pretrained",
+        action="store_true",
+    )
+
     return parser.parse_args()
 
 
@@ -234,6 +239,10 @@ def main():
 
     print("Using device:", device)
     print("Checkpoint:", args.checkpoint)
+    print(
+        "Pretrained preprocessing:",
+        args.pretrained,
+    )
 
     _, val_loader = (
         create_cluster_country_dataloaders(
@@ -251,12 +260,14 @@ def main():
             batch_size=args.batch_size,
             num_workers=0,
             seed=42,
+            pretrained=args.pretrained,
         )
     )
 
     model = GeoClusterCountryModel(
         num_clusters=args.num_clusters,
         num_countries=args.num_countries,
+        pretrained=args.pretrained,
     ).to(device)
 
     state_dict = torch.load(
@@ -305,7 +316,10 @@ def main():
 
     true_coordinates = torch.tensor(
         val_df[
-            ["lat", "lng"]
+            [
+                "lat",
+                "lng",
+            ]
         ].values,
         dtype=torch.float32,
     )
@@ -457,9 +471,7 @@ def main():
 
             metrics = compute_metrics(
                 predicted_xyz=predicted_xyz,
-                true_coordinates=(
-                    true_coordinates
-                ),
+                true_coordinates=true_coordinates,
             )
 
             method_name = (
@@ -507,16 +519,17 @@ def main():
             ):
                 best = {
                     "method": method_name,
-                    "temperature": (
-                        temperature
-                    ),
+                    "temperature": temperature,
                     "top_k": top_k,
                     **metrics,
                 }
 
     print()
     print("=== Best decoding ===")
-    print("Method:", best["method"])
+    print(
+        "Method:",
+        best["method"],
+    )
 
     print(
         "Temperature:",
