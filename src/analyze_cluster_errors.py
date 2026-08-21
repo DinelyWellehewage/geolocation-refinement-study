@@ -7,6 +7,9 @@ import torch
 from src.datasets.dataloaders_cluster import (
     create_cluster_dataloaders,
 )
+from src.datasets.dataloaders_cluster_country import (
+    create_cluster_country_dataloaders,
+)
 from src.models.model_cluster import (
     GeoClusterModel,
 )
@@ -14,6 +17,22 @@ from src.models.model_cluster_country import (
     GeoClusterCountryModel,
 )
 from src.utils.metrics import haversine_distance_km
+
+
+COUNTRY_NAMES = [
+    "Belarus",
+    "Finland",
+    "France",
+    "Germany",
+    "Iceland",
+    "Italy",
+    "Norway",
+    "Poland",
+    "Spain",
+    "Sweden",
+    "Turkey",
+    "United_Kingdom",
+]
 
 
 def xyz_to_latlng(xyz):
@@ -40,6 +59,35 @@ def xyz_to_latlng(xyz):
     )
 
 
+def build_model(
+    model_type,
+    num_clusters,
+    num_countries,
+    pretrained,
+):
+    if model_type == "cluster":
+        if pretrained:
+            raise ValueError(
+                "--pretrained is currently supported only "
+                "for model-type=cluster_country."
+            )
+
+        return GeoClusterModel(
+            num_clusters=num_clusters,
+        )
+
+    if model_type == "cluster_country":
+        return GeoClusterCountryModel(
+            num_clusters=num_clusters,
+            num_countries=num_countries,
+            pretrained=pretrained,
+        )
+
+    raise ValueError(
+        f"Unknown model type: {model_type}"
+    )
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
@@ -56,7 +104,7 @@ def parse_args():
             "cluster",
             "cluster_country",
         ],
-        required=True,
+        default="cluster",
     )
 
     parser.add_argument(
@@ -78,78 +126,68 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--pretrained",
+        action="store_true",
+    )
+
+    parser.add_argument(
         "--output-prefix",
         type=str,
-        default=None,
+        default="cluster64",
     )
 
     return parser.parse_args()
-
-
-def build_model(
-    model_type,
-    num_clusters,
-    num_countries,
-):
-    if model_type == "cluster":
-        return GeoClusterModel(
-            num_clusters=num_clusters,
-        )
-
-    if model_type == "cluster_country":
-        return GeoClusterCountryModel(
-            num_clusters=num_clusters,
-            num_countries=num_countries,
-        )
-
-    raise ValueError(
-        f"Unknown model type: {model_type}"
-    )
-
-
-def get_cluster_logits(
-    model,
-    images,
-    model_type,
-):
-    outputs = model(images)
-
-    if model_type == "cluster":
-        return outputs
-
-    if model_type == "cluster_country":
-        cluster_logits, _ = outputs
-        return cluster_logits
-
-    raise ValueError(
-        f"Unknown model type: {model_type}"
-    )
 
 
 def main():
     args = parse_args()
 
     device = torch.device(
-        "cuda" if torch.cuda.is_available() else "cpu"
+        "cuda"
+        if torch.cuda.is_available()
+        else "cpu"
     )
 
     print("Using device:", device)
     print("Checkpoint:", args.checkpoint)
     print("Model type:", args.model_type)
+    print("Pretrained preprocessing:", args.pretrained)
 
-    _, val_loader = create_cluster_dataloaders(
-        train_csv="geo_dataset/train_cluster64.csv",
-        val_csv="geo_dataset/val_cluster64.csv",
-        image_dir="geo_dataset/train",
-        batch_size=args.batch_size,
-        num_workers=0,
-        seed=42,
-    )
+    if args.model_type == "cluster_country":
+        _, val_loader = (
+            create_cluster_country_dataloaders(
+                train_csv=(
+                    "geo_dataset/train_cluster64.csv"
+                ),
+                val_csv=(
+                    "geo_dataset/val_cluster64.csv"
+                ),
+                image_dir="geo_dataset/train",
+                batch_size=args.batch_size,
+                num_workers=0,
+                seed=42,
+                pretrained=args.pretrained,
+            )
+        )
+    else:
+        _, val_loader = create_cluster_dataloaders(
+            train_csv=(
+                "geo_dataset/train_cluster64.csv"
+            ),
+            val_csv=(
+                "geo_dataset/val_cluster64.csv"
+            ),
+            image_dir="geo_dataset/train",
+            batch_size=args.batch_size,
+            num_workers=0,
+            seed=42,
+        )
 
     model = build_model(
         model_type=args.model_type,
         num_clusters=args.num_clusters,
         num_countries=args.num_countries,
+        pretrained=args.pretrained,
     ).to(device)
 
     state_dict = torch.load(
@@ -167,26 +205,53 @@ def main():
     all_targets = []
 
     with torch.no_grad():
-        for images, clusters in val_loader:
-            images = images.to(device)
+        if args.model_type == "cluster_country":
+            for (
+                images,
+                clusters,
+                _,
+            ) in val_loader:
+                images = images.to(device)
 
-            cluster_logits = get_cluster_logits(
-                model=model,
-                images=images,
-                model_type=args.model_type,
-            )
+                (
+                    cluster_logits,
+                    _,
+                ) = model(images)
 
-            predictions = cluster_logits.argmax(
-                dim=1
-            )
+                predictions = (
+                    cluster_logits.argmax(
+                        dim=1
+                    )
+                )
 
-            all_predictions.append(
-                predictions.cpu()
-            )
+                all_predictions.append(
+                    predictions.cpu()
+                )
 
-            all_targets.append(
-                clusters.cpu()
-            )
+                all_targets.append(
+                    clusters.cpu()
+                )
+
+        else:
+            for (
+                images,
+                clusters,
+            ) in val_loader:
+                images = images.to(device)
+
+                logits = model(images)
+
+                predictions = logits.argmax(
+                    dim=1
+                )
+
+                all_predictions.append(
+                    predictions.cpu()
+                )
+
+                all_targets.append(
+                    clusters.cpu()
+                )
 
     predicted_clusters = torch.cat(
         all_predictions
@@ -208,13 +273,12 @@ def main():
         "geo_dataset/val_cluster64.csv"
     )
 
-    train_df = pd.read_csv(
-        "geo_dataset/train_cluster64.csv"
-    )
-
     true_coordinates = torch.tensor(
         val_df[
-            ["lat", "lng"]
+            [
+                "lat",
+                "lng",
+            ]
         ].values,
         dtype=torch.float32,
     )
@@ -267,27 +331,27 @@ def main():
     print("=== Error breakdown ===")
 
     print(
-        f"Correct cluster: "
-        f"{correct_cluster.sum()} "
-        f"({pct(correct_cluster):.2f}%)"
+        "Correct cluster:",
+        correct_cluster.sum(),
+        f"({pct(correct_cluster):.2f}%)",
     )
 
     print(
-        f"Wrong cluster but <200 km: "
-        f"{near_wrong.sum()} "
-        f"({pct(near_wrong):.2f}%)"
+        "Wrong cluster but <200 km:",
+        near_wrong.sum(),
+        f"({pct(near_wrong):.2f}%)",
     )
 
     print(
-        f"Wrong cluster 200-750 km: "
-        f"{medium_wrong.sum()} "
-        f"({pct(medium_wrong):.2f}%)"
+        "Wrong cluster 200-750 km:",
+        medium_wrong.sum(),
+        f"({pct(medium_wrong):.2f}%)",
     )
 
     print(
-        f"Wrong cluster >=750 km: "
-        f"{catastrophic_wrong.sum()} "
-        f"({pct(catastrophic_wrong):.2f}%)"
+        "Wrong cluster >=750 km:",
+        catastrophic_wrong.sum(),
+        f"({pct(catastrophic_wrong):.2f}%)",
     )
 
     print()
@@ -313,136 +377,6 @@ def main():
         f"{(distances < 750).mean() * 100:.2f}%",
     )
 
-    # --------------------------------------------------
-    # Map each cluster to its dominant training country.
-    # --------------------------------------------------
-
-    cluster_to_country = {}
-
-    for cluster_id in range(
-        args.num_clusters
-    ):
-        cluster_rows = train_df[
-            train_df["geo_cluster"]
-            == cluster_id
-        ]
-
-        if len(cluster_rows) == 0:
-            cluster_to_country[
-                cluster_id
-            ] = "UNKNOWN"
-            continue
-
-        dominant_country = (
-            cluster_rows["country"]
-            .value_counts()
-            .idxmax()
-        )
-
-        cluster_to_country[
-            cluster_id
-        ] = dominant_country
-
-    true_countries = (
-        val_df["country"]
-        .astype(str)
-        .values
-    )
-
-    predicted_countries = np.array(
-        [
-            cluster_to_country[
-                int(cluster_id)
-            ]
-            for cluster_id
-            in predicted_clusters
-        ]
-    )
-
-    same_country = (
-        predicted_countries
-        == true_countries
-    )
-
-    catastrophic_same_country = (
-        catastrophic_wrong
-        & same_country
-    )
-
-    catastrophic_cross_country = (
-        catastrophic_wrong
-        & ~same_country
-    )
-
-    catastrophic_total = (
-        catastrophic_wrong.sum()
-    )
-
-    print()
-    print(
-        "=== Catastrophic error country analysis ==="
-    )
-
-    print(
-        "Catastrophic same-country:",
-        catastrophic_same_country.sum(),
-        (
-            f"({catastrophic_same_country.sum() / catastrophic_total * 100:.2f}% "
-            "of catastrophic errors)"
-            if catastrophic_total > 0
-            else "(0.00%)"
-        ),
-    )
-
-    print(
-        "Catastrophic cross-country:",
-        catastrophic_cross_country.sum(),
-        (
-            f"({catastrophic_cross_country.sum() / catastrophic_total * 100:.2f}% "
-            "of catastrophic errors)"
-            if catastrophic_total > 0
-            else "(0.00%)"
-        ),
-    )
-
-    catastrophic_pairs = pd.DataFrame(
-        {
-            "true_country": (
-                true_countries[
-                    catastrophic_wrong
-                ]
-            ),
-            "predicted_country": (
-                predicted_countries[
-                    catastrophic_wrong
-                ]
-            ),
-        }
-    )
-
-    pair_counts = (
-        catastrophic_pairs
-        .value_counts()
-        .reset_index(
-            name="count"
-        )
-        .sort_values(
-            "count",
-            ascending=False,
-        )
-    )
-
-    print()
-    print(
-        "=== Top catastrophic country pairs ==="
-    )
-
-    print(
-        pair_counts.head(20).to_string(
-            index=False
-        )
-    )
-
     confusion = np.zeros(
         (
             args.num_clusters,
@@ -451,38 +385,45 @@ def main():
         dtype=np.int64,
     )
 
-    for true_cluster, pred_cluster in zip(
+    for true_id, pred_id in zip(
         true_clusters,
         predicted_clusters,
     ):
         confusion[
-            true_cluster,
-            pred_cluster,
+            true_id,
+            pred_id,
         ] += 1
 
-    output_prefix = args.output_prefix
+    error_df = val_df.copy()
 
-    if output_prefix is None:
-        output_prefix = (
-            "cluster64_country"
-            if args.model_type
-            == "cluster_country"
-            else "cluster64"
-        )
+    error_df[
+        "true_cluster"
+    ] = true_clusters
+
+    error_df[
+        "predicted_cluster"
+    ] = predicted_clusters
+
+    error_df[
+        "distance_km"
+    ] = distances
+
+    error_df[
+        "correct_cluster"
+    ] = correct_cluster
+
+    error_df[
+        "catastrophic"
+    ] = catastrophic_wrong
 
     confusion_path = (
         f"geo_dataset/"
-        f"{output_prefix}_confusion.npy"
+        f"{args.output_prefix}_confusion.npy"
     )
 
-    analysis_path = (
+    error_path = (
         f"geo_dataset/"
-        f"{output_prefix}_error_analysis.csv"
-    )
-
-    pair_path = (
-        f"geo_dataset/"
-        f"{output_prefix}_catastrophic_country_pairs.csv"
+        f"{args.output_prefix}_error_analysis.csv"
     )
 
     np.save(
@@ -490,61 +431,142 @@ def main():
         confusion,
     )
 
-    results = val_df.copy()
-
-    results[
-        "predicted_cluster"
-    ] = predicted_clusters
-
-    results[
-        "predicted_country"
-    ] = predicted_countries
-
-    results[
-        "distance_km"
-    ] = distances
-
-    results[
-        "correct_cluster"
-    ] = correct_cluster
-
-    results[
-        "same_country"
-    ] = same_country
-
-    results[
-        "error_category"
-    ] = np.select(
-        [
-            correct_cluster,
-            near_wrong,
-            medium_wrong,
-            catastrophic_wrong,
-        ],
-        [
-            "correct_cluster",
-            "wrong_under_200",
-            "wrong_200_750",
-            "wrong_over_750",
-        ],
-        default="unknown",
-    )
-
-    results.to_csv(
-        analysis_path,
+    error_df.to_csv(
+        error_path,
         index=False,
     )
 
-    pair_counts.to_csv(
-        pair_path,
-        index=False,
-    )
+    catastrophic_df = error_df[
+        error_df["catastrophic"]
+    ].copy()
+
+    if len(catastrophic_df) > 0:
+        cluster_country_table = pd.crosstab(
+            pd.read_csv(
+                "geo_dataset/train_cluster64.csv"
+            )["geo_cluster"],
+            pd.read_csv(
+                "geo_dataset/train_cluster64.csv"
+            )["country"],
+        )
+
+        cluster_to_country = (
+            cluster_country_table
+            .idxmax(axis=1)
+            .to_dict()
+        )
+
+        catastrophic_df[
+            "predicted_country"
+        ] = catastrophic_df[
+            "predicted_cluster"
+        ].map(
+            cluster_to_country
+        )
+
+        same_country = (
+            catastrophic_df[
+                "country"
+            ]
+            == catastrophic_df[
+                "predicted_country"
+            ]
+        )
+
+        same_count = int(
+            same_country.sum()
+        )
+
+        cross_count = int(
+            (~same_country).sum()
+        )
+
+        print()
+        print(
+            "=== Catastrophic error "
+            "country analysis ==="
+        )
+
+        print(
+            "Catastrophic same-country:",
+            same_count,
+            (
+                f"({same_count / len(catastrophic_df) * 100:.2f}% "
+                "of catastrophic errors)"
+            ),
+        )
+
+        print(
+            "Catastrophic cross-country:",
+            cross_count,
+            (
+                f"({cross_count / len(catastrophic_df) * 100:.2f}% "
+                "of catastrophic errors)"
+            ),
+        )
+
+        country_pairs = (
+            catastrophic_df
+            .groupby(
+                [
+                    "country",
+                    "predicted_country",
+                ]
+            )
+            .size()
+            .reset_index(
+                name="count"
+            )
+            .sort_values(
+                "count",
+                ascending=False,
+            )
+        )
+
+        country_pairs = (
+            country_pairs.rename(
+                columns={
+                    "country": (
+                        "true_country"
+                    ),
+                }
+            )
+        )
+
+        print()
+        print(
+            "=== Top catastrophic "
+            "country pairs ==="
+        )
+
+        print(
+            country_pairs
+            .head(20)
+            .to_string(
+                index=False
+            )
+        )
+
+        country_pairs_path = (
+            f"geo_dataset/"
+            f"{args.output_prefix}_"
+            "catastrophic_country_pairs.csv"
+        )
+
+        country_pairs.to_csv(
+            country_pairs_path,
+            index=False,
+        )
 
     print()
     print("Saved:")
     print(confusion_path)
-    print(analysis_path)
-    print(pair_path)
+    print(error_path)
+
+    if len(catastrophic_df) > 0:
+        print(
+            country_pairs_path
+        )
 
 
 if __name__ == "__main__":
