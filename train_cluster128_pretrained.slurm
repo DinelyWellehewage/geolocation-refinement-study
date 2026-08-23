@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=geo-k128-pretrain
+#SBATCH --job-name=geo-k128-final
 #SBATCH --partition=a40
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
@@ -22,10 +22,10 @@ python3 -m src.main_cluster_country \
   --batch-size 64 \
   --lr 0.001 \
   --weight-decay 0.001 \
-  --country-weight 0.0 \
+  --country-weight 0.20 \
   --consistency-weight 0.0 \
   --smoothing-mode ordinary \
   --label-smoothing 0.1 \
   --pretrained \
   --seed 42 \
-  --checkpoint-name cluster128_imagenet_cluster_only_seed42.pth
+  --checkpoint-name cluster128_imagenet_country_cw020_seed42.pth
