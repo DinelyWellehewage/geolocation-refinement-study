@@ -91,6 +91,12 @@ def parse_args():
         default=42,
     )
 
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default="cv_k128",
+    )
+
     return parser.parse_args()
 
 
@@ -106,19 +112,32 @@ def set_seed(seed):
 
 
 def xyz_to_latlng(xyz):
-    xyz = xyz / np.linalg.norm(
-        xyz,
-        axis=1,
-        keepdims=True,
+    xyz = (
+        xyz
+        / np.linalg.norm(
+            xyz,
+            axis=1,
+            keepdims=True,
+        )
     )
 
     x = xyz[:, 0]
     y = xyz[:, 1]
     z = xyz[:, 2]
 
-    lng = np.arctan2(y, x)
-    hyp = np.sqrt(x**2 + y**2)
-    lat = np.arctan2(z, hyp)
+    lng = np.arctan2(
+        y,
+        x,
+    )
+
+    hyp = np.sqrt(
+        x**2 + y**2
+    )
+
+    lat = np.arctan2(
+        z,
+        hyp,
+    )
 
     return np.stack(
         [
@@ -146,9 +165,22 @@ def main():
     print("Clusters:", k)
     print("Using device:", device)
     print("Pretrained: True")
-    print("Country weight:", args.country_weight)
-    print("Weight decay:", args.weight_decay)
-    print("Label smoothing:", args.label_smoothing)
+    print(
+        "Country weight:",
+        args.country_weight,
+    )
+    print(
+        "Weight decay:",
+        args.weight_decay,
+    )
+    print(
+        "Label smoothing:",
+        args.label_smoothing,
+    )
+    print(
+        "Experiment:",
+        args.experiment_name,
+    )
 
     base_dir = (
         f"geo_dataset/cv_cluster{k}"
@@ -192,7 +224,11 @@ def main():
         for p in model.parameters()
     )
 
-    print("Parameter count:", num_params)
+    print(
+        "Parameter count:",
+        num_params,
+    )
+
     print(
         "Under 5 million:",
         num_params <= 5_000_000,
@@ -225,13 +261,17 @@ def main():
 
     true_coordinates = torch.tensor(
         val_df[
-            ["lat", "lng"]
+            [
+                "lat",
+                "lng",
+            ]
         ].values,
         dtype=torch.float32,
     )
 
-    checkpoint_dir = (
-        f"checkpoints/cv_cluster{k}"
+    checkpoint_dir = os.path.join(
+        "checkpoints",
+        args.experiment_name,
     )
 
     os.makedirs(
@@ -244,12 +284,25 @@ def main():
         f"fold{fold}.pth",
     )
 
+    result_dir = os.path.join(
+        "results",
+        args.experiment_name,
+    )
+
+    os.makedirs(
+        result_dir,
+        exist_ok=True,
+    )
+
     prediction_path = os.path.join(
-        base_dir,
+        result_dir,
         f"predictions_fold{fold}.csv",
     )
 
-    best_median = float("inf")
+    best_median = float(
+        "inf"
+    )
+
     best_predictions = None
 
     for epoch in range(
@@ -261,12 +314,16 @@ def main():
                 dataloader=train_loader,
                 optimizer=optimizer,
                 device=device,
-                country_weight=args.country_weight,
+                country_weight=(
+                    args.country_weight
+                ),
                 consistency_weight=0.0,
                 consistency_loss_fn=None,
                 smoothing_mode="ordinary",
                 centers_xyz=centers_xyz,
-                label_smoothing=args.label_smoothing,
+                label_smoothing=(
+                    args.label_smoothing
+                ),
                 geographic_temperature_km=500.0,
             )
         )
@@ -292,23 +349,31 @@ def main():
             ]
         )
 
-        predicted_coordinates = torch.tensor(
-            predicted_latlng,
-            dtype=torch.float32,
+        predicted_coordinates = (
+            torch.tensor(
+                predicted_latlng,
+                dtype=torch.float32,
+            )
         )
 
-        distances = haversine_distance_km(
-            predicted_coordinates,
-            true_coordinates,
+        distances = (
+            haversine_distance_km(
+                predicted_coordinates,
+                true_coordinates,
+            )
         )
 
-        median_km = torch.median(
-            distances
-        ).item()
+        median_km = (
+            torch.median(
+                distances
+            ).item()
+        )
 
-        mean_km = torch.mean(
-            distances
-        ).item()
+        mean_km = (
+            torch.mean(
+                distances
+            ).item()
+        )
 
         within_200 = (
             (distances < 200)
@@ -352,8 +417,13 @@ def main():
             f"| LR: {current_lr:.6f}"
         )
 
-        if median_km < best_median:
-            best_median = median_km
+        if (
+            median_km
+            < best_median
+        ):
+            best_median = (
+                median_km
+            )
 
             torch.save(
                 model.state_dict(),
@@ -370,6 +440,11 @@ def main():
                 f"to {checkpoint_path}"
             )
 
+    if best_predictions is None:
+        raise RuntimeError(
+            "No best predictions were saved."
+        )
+
     output_df = val_df[
         [
             "filename",
@@ -382,21 +457,30 @@ def main():
 
     output_df[
         "pred_lat"
-    ] = best_predictions[:, 0]
+    ] = best_predictions[
+        :,
+        0,
+    ]
 
     output_df[
         "pred_lng"
-    ] = best_predictions[:, 1]
+    ] = best_predictions[
+        :,
+        1,
+    ]
 
     pred_tensor = torch.tensor(
         best_predictions,
         dtype=torch.float32,
     )
 
-    final_distances = haversine_distance_km(
-        pred_tensor,
-        true_coordinates,
-    ).numpy()
+    final_distances = (
+        haversine_distance_km(
+            pred_tensor,
+            true_coordinates,
+        )
+        .numpy()
+    )
 
     output_df[
         "distance_km"
@@ -407,10 +491,66 @@ def main():
         index=False,
     )
 
+    final_median = float(
+        np.median(
+            final_distances
+        )
+    )
+
+    final_mean = float(
+        np.mean(
+            final_distances
+        )
+    )
+
+    final_within_200 = float(
+        (
+            final_distances < 200
+        ).mean()
+        * 100
+    )
+
+    final_within_750 = float(
+        (
+            final_distances < 750
+        ).mean()
+        * 100
+    )
+
+    print()
+    print(
+        f"=== Best fold {fold} metrics ==="
+    )
+
+    print(
+        "Median:",
+        f"{final_median:.2f} km",
+    )
+
+    print(
+        "Mean:",
+        f"{final_mean:.2f} km",
+    )
+
+    print(
+        "<200:",
+        f"{final_within_200:.2f}%",
+    )
+
+    print(
+        "<750:",
+        f"{final_within_750:.2f}%",
+    )
+
     print()
     print(
         f"Best fold {fold} median:",
         f"{best_median:.2f} km",
+    )
+
+    print(
+        "Checkpoint:",
+        checkpoint_path,
     )
 
     print(
