@@ -15,18 +15,17 @@ source .venv-cluster/bin/activate
 mkdir -p logs
 mkdir -p checkpoints/cluster_country
 
-python -m src.main_cluster_country \
-    --num-clusters 128 \
-    --num-countries 12 \
-    --epochs 40 \
-    --batch-size 64 \
-    --lr 0.001 \
-    --weight-decay 0.001 \
-    --num-workers 4 \
-    --seed 42 \
-    --country-weight 0.20 \
-    --consistency-weight 0.0 \
-    --smoothing-mode ordinary \
-    --label-smoothing 0.1 \
-    --pretrained \
-    --checkpoint-name cluster128_imagenet_country_cw020_seed42.pth
+python3 -m src.main_cluster_country \
+  --num-clusters 128 \
+  --num-countries 12 \
+  --epochs 40 \
+  --batch-size 64 \
+  --lr 0.001 \
+  --weight-decay 0.001 \
+  --country-weight 0.0 \
+  --consistency-weight 0.0 \
+  --smoothing-mode ordinary \
+  --label-smoothing 0.1 \
+  --pretrained \
+  --seed 42 \
+  --checkpoint-name cluster128_imagenet_cluster_only_seed42.pth
