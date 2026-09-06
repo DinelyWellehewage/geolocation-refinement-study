@@ -4,7 +4,6 @@
 #SBATCH --gres=gpu:a40:1
 #SBATCH --time=00:30:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
 #SBATCH --output=logs/resxyz_smoke_%j.out
 #SBATCH --error=logs/resxyz_smoke_%j.err
 
