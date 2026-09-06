@@ -674,3 +674,8 @@ checkpoints/final/final_k128_imagenet_cw020.pth
 ```
 
 At inference time, only the final residual checkpoint is loaded as the model. The Stage 1 and Stage 2 checkpoints are **not** used as an ensemble.
+
+
+## Repository
+
+https://github.com/DinelyWellehewage/deep-learning-final-project-geolocation
