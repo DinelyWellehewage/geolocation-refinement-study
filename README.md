@@ -542,6 +542,9 @@ The final submission pipeline is implemented in `src/`.
 Development and ablation runners are stored separately in `experiments/` so that the final training and inference path remains unambiguous.
 
 The two root SLURM scripts correspond directly to the two final training stages.
+The `experiments/` directory contains historical development, baseline, and ablation implementations used during model selection. These files are retained to document the experimental process but are not part of the final training or inference pipeline.
+
+
 
 ```text
 .
@@ -581,12 +584,6 @@ The two root SLURM scripts correspond directly to the two final training stages.
 │       └── cluster128_centers_full.npy
 │
 ├── experiments/
-│   ├── README.md
-│   ├── main_cluster_country.py
-│   ├── main_cluster_country_residual_xyz.py
-│   ├── main_cluster_country_residual_xyz_frozen.py
-│   └── evaluate_residual_xyz.py
-│
 └── src/
     ├── create_cluster_variants.py
     ├── create_final_clusters.py
