@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from torchvision.models import (
     MobileNet_V3_Large_Weights,
@@ -15,7 +16,9 @@ class GeoClusterCountryResidualXYZModel(nn.Module):
         super().__init__()
 
         if pretrained:
-            weights = MobileNet_V3_Large_Weights.DEFAULT
+            weights = (
+                MobileNet_V3_Large_Weights.DEFAULT
+            )
         else:
             weights = None
 
@@ -28,8 +31,11 @@ class GeoClusterCountryResidualXYZModel(nn.Module):
             .in_features
         )
 
-        # Remove original ImageNet classifier.
-        self.backbone.classifier[-1] = nn.Identity()
+        # Remove the original ImageNet
+        # 1000-class output layer.
+        self.backbone.classifier[-1] = (
+            nn.Identity()
+        )
 
         self.cluster_head = nn.Linear(
             in_features,
@@ -41,10 +47,21 @@ class GeoClusterCountryResidualXYZModel(nn.Module):
             num_countries,
         )
 
-        # Predict local correction in XYZ space.
+        # Predict a normalized local correction
+        # in spherical XYZ space.
         self.residual_head = nn.Linear(
             in_features,
             3,
+        )
+
+        # Residual refinement initially makes
+        # no change to the cluster-center prediction.
+        nn.init.zeros_(
+            self.residual_head.weight
+        )
+
+        nn.init.zeros_(
+            self.residual_head.bias
         )
 
     def forward(
@@ -55,20 +72,32 @@ class GeoClusterCountryResidualXYZModel(nn.Module):
             x
         )
 
-        cluster_logits = self.cluster_head(
-            features
+        cluster_logits = (
+            self.cluster_head(
+                features
+            )
         )
 
-        country_logits = self.country_head(
-            features
+        country_logits = (
+            self.country_head(
+                features
+            )
         )
 
-        residual_xyz = self.residual_head(
-            features
+        # The target residual is scaled by
+        # RESIDUAL_SCALE in the dataset.
+        #
+        # tanh bounds each predicted component
+        # to [-1, 1].
+        residual_xyz_scaled = torch.tanh(
+            self.residual_head(
+                features
+            )
         )
 
         return (
             cluster_logits,
             country_logits,
-            residual_xyz,
+            residual_xyz_scaled,
         )
+    

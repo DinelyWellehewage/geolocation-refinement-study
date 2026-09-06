@@ -20,11 +20,14 @@ from src.training.train_cluster_country_residual_xyz import (
 from src.utils.metrics import haversine_distance_km
 
 
+RESIDUAL_SCALE = 0.05
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "K=128 geographic cluster + country + "
-            "spherical XYZ residual experiment."
+            "bounded spherical XYZ residual experiment."
         )
     )
 
@@ -115,25 +118,39 @@ def parse_args():
         type=str,
         default=(
             "cluster128_country_residual_xyz_"
-            "rw1_seed42.pth"
+            "scaled_rw1_seed42.pth"
         ),
     )
 
     return parser.parse_args()
 
 
-def set_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
+def set_seed(
+    seed,
+):
+    random.seed(
+        seed
+    )
 
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    np.random.seed(
+        seed
+    )
+
+    torch.manual_seed(
+        seed
+    )
+
+    torch.cuda.manual_seed_all(
+        seed
+    )
 
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
 
-def xyz_to_latlng(xyz):
+def xyz_to_latlng(
+    xyz,
+):
     xyz = (
         xyz
         / np.linalg.norm(
@@ -153,7 +170,8 @@ def xyz_to_latlng(xyz):
     )
 
     hyp = np.sqrt(
-        x**2 + y**2
+        x**2
+        + y**2
     )
 
     lat = np.arctan2(
@@ -163,8 +181,12 @@ def xyz_to_latlng(xyz):
 
     return np.stack(
         [
-            np.degrees(lat),
-            np.degrees(lng),
+            np.degrees(
+                lat
+            ),
+            np.degrees(
+                lng
+            ),
         ],
         axis=1,
     )
@@ -192,18 +214,27 @@ def load_baseline_checkpoint(
         for key, value in baseline_state.items()
         if (
             key in current_state
-            and current_state[key].shape == value.shape
+            and current_state[key].shape
+            == value.shape
         )
     }
 
     missing_keys = sorted(
-        set(current_state.keys())
-        - set(compatible_state.keys())
+        set(
+            current_state.keys()
+        )
+        - set(
+            compatible_state.keys()
+        )
     )
 
     unexpected_keys = sorted(
-        set(baseline_state.keys())
-        - set(current_state.keys())
+        set(
+            baseline_state.keys()
+        )
+        - set(
+            current_state.keys()
+        )
     )
 
     model.load_state_dict(
@@ -213,7 +244,9 @@ def load_baseline_checkpoint(
 
     print(
         "Loaded baseline tensors:",
-        len(compatible_state),
+        len(
+            compatible_state
+        ),
     )
 
     print(
@@ -232,14 +265,10 @@ def load_baseline_checkpoint(
         "residual_head.bias",
     }
 
-    actual_new = set(
-        missing_keys
-    )
-
-    if actual_new != expected_new:
+    if set(missing_keys) != expected_new:
         print(
-            "Warning: expected only the residual head "
-            "to remain randomly initialized."
+            "Warning: expected only the "
+            "residual head to remain new."
         )
 
 
@@ -255,7 +284,7 @@ def main():
     print(
         "Model: MobileNetV3-Large "
         "cluster + auxiliary country "
-        "+ spherical XYZ residual"
+        "+ bounded spherical XYZ residual"
     )
 
     print(
@@ -291,6 +320,11 @@ def main():
     print(
         "Residual weight:",
         args.residual_weight,
+    )
+
+    print(
+        "Residual scale:",
+        RESIDUAL_SCALE,
     )
 
     print(
@@ -354,12 +388,16 @@ def main():
         num_clusters=k,
         num_countries=args.num_countries,
         pretrained=args.pretrained,
-    ).to(device)
+    ).to(
+        device
+    )
 
     if args.init_checkpoint is not None:
         load_baseline_checkpoint(
             model=model,
-            checkpoint_path=args.init_checkpoint,
+            checkpoint_path=(
+                args.init_checkpoint
+            ),
             device=device,
         )
 
@@ -375,7 +413,8 @@ def main():
 
     print(
         "Under 5 million:",
-        num_params <= 5_000_000,
+        num_params
+        <= 5_000_000,
     )
 
     if num_params > 5_000_000:
@@ -411,11 +450,13 @@ def main():
         encoding="utf-8",
     )
 
-    true_coordinates = np.column_stack(
-        [
-            val_data["lat"],
-            val_data["lng"],
-        ]
+    true_coordinates = (
+        np.column_stack(
+            [
+                val_data["lat"],
+                val_data["lng"],
+            ]
+        )
     )
 
     true_coordinates = torch.tensor(
@@ -451,9 +492,15 @@ def main():
                 dataloader=train_loader,
                 optimizer=optimizer,
                 device=device,
-                country_weight=args.country_weight,
-                residual_weight=args.residual_weight,
-                label_smoothing=args.label_smoothing,
+                country_weight=(
+                    args.country_weight
+                ),
+                residual_weight=(
+                    args.residual_weight
+                ),
+                label_smoothing=(
+                    args.label_smoothing
+                ),
             )
         )
 
@@ -472,11 +519,18 @@ def main():
             .numpy()
         )
 
-        predicted_residuals = (
+        predicted_residuals_scaled = (
             val_metrics[
                 "residual_predictions"
             ]
             .numpy()
+        )
+
+        # Convert the normalized residual
+        # prediction back into XYZ units.
+        predicted_residuals = (
+            RESIDUAL_SCALE
+            * predicted_residuals_scaled
         )
 
         predicted_centers_xyz = (
@@ -511,23 +565,31 @@ def main():
             )
         )
 
-        predicted_coordinates = torch.tensor(
-            predicted_coordinates,
-            dtype=torch.float32,
+        predicted_coordinates = (
+            torch.tensor(
+                predicted_coordinates,
+                dtype=torch.float32,
+            )
         )
 
-        distances = haversine_distance_km(
-            predicted_coordinates,
-            true_coordinates,
+        distances = (
+            haversine_distance_km(
+                predicted_coordinates,
+                true_coordinates,
+            )
         )
 
-        median_km = torch.median(
-            distances
-        ).item()
+        median_km = (
+            torch.median(
+                distances
+            ).item()
+        )
 
-        mean_km = torch.mean(
-            distances
-        ).item()
+        mean_km = (
+            torch.mean(
+                distances
+            ).item()
+        )
 
         within_200 = (
             (distances < 200)
@@ -584,10 +646,7 @@ def main():
             f"{current_lr:.6f}"
         )
 
-        if (
-            median_km
-            < best_median_km
-        ):
+        if median_km < best_median_km:
             best_median_km = (
                 median_km
             )

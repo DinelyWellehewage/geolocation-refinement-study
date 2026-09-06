@@ -23,21 +23,50 @@ COUNTRY_TO_IDX = {
 }
 
 
-def latlng_to_xyz(lat, lng):
-    lat = np.radians(lat)
-    lng = np.radians(lng)
+# Covers the observed training residual range:
+# maximum residual norm was approximately 0.0405.
+RESIDUAL_SCALE = 0.05
 
-    x = np.cos(lat) * np.cos(lng)
-    y = np.cos(lat) * np.sin(lng)
-    z = np.sin(lat)
+
+def latlng_to_xyz(
+    lat,
+    lng,
+):
+    lat = np.radians(
+        lat
+    )
+
+    lng = np.radians(
+        lng
+    )
+
+    x = (
+        np.cos(lat)
+        * np.cos(lng)
+    )
+
+    y = (
+        np.cos(lat)
+        * np.sin(lng)
+    )
+
+    z = np.sin(
+        lat
+    )
 
     return np.array(
-        [x, y, z],
+        [
+            x,
+            y,
+            z,
+        ],
         dtype=np.float32,
     )
 
 
-class GeoClusterCountryResidualXYZDataset(Dataset):
+class GeoClusterCountryResidualXYZDataset(
+    Dataset
+):
     def __init__(
         self,
         csv_file,
@@ -45,7 +74,9 @@ class GeoClusterCountryResidualXYZDataset(Dataset):
         centers_path,
         transform=None,
     ):
-        self.df = pd.read_csv(csv_file)
+        self.df = pd.read_csv(
+            csv_file
+        )
 
         self.image_dir = Path(
             image_dir
@@ -55,16 +86,24 @@ class GeoClusterCountryResidualXYZDataset(Dataset):
 
         self.centers_xyz = np.load(
             centers_path
-        ).astype(np.float32)
+        ).astype(
+            np.float32
+        )
 
-    def __len__(self):
-        return len(self.df)
+    def __len__(
+        self,
+    ):
+        return len(
+            self.df
+        )
 
     def __getitem__(
         self,
         index,
     ):
-        row = self.df.iloc[index]
+        row = self.df.iloc[
+            index
+        ]
 
         image_path = (
             self.image_dir
@@ -73,7 +112,9 @@ class GeoClusterCountryResidualXYZDataset(Dataset):
 
         image = Image.open(
             image_path
-        ).convert("RGB")
+        ).convert(
+            "RGB"
+        )
 
         if self.transform is not None:
             image = self.transform(
@@ -93,14 +134,26 @@ class GeoClusterCountryResidualXYZDataset(Dataset):
             row["lng"],
         )
 
-        center_xyz = self.centers_xyz[
-            cluster
-        ]
+        center_xyz = (
+            self.centers_xyz[
+                cluster
+            ]
+        )
 
         residual_xyz = (
             true_xyz
             - center_xyz
-        ).astype(np.float32)
+        )
+
+        # Scale the residual so that the
+        # regression target has a useful
+        # numerical magnitude.
+        residual_xyz_scaled = (
+            residual_xyz
+            / RESIDUAL_SCALE
+        ).astype(
+            np.float32
+        )
 
         return (
             image,
@@ -113,7 +166,8 @@ class GeoClusterCountryResidualXYZDataset(Dataset):
                 dtype=torch.long,
             ),
             torch.tensor(
-                residual_xyz,
+                residual_xyz_scaled,
                 dtype=torch.float32,
             ),
         )
+    
