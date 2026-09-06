@@ -15,6 +15,9 @@ from src.training.train_cluster_country_residual_xyz import (
 from src.utils.metrics import haversine_distance_km
 
 
+RESIDUAL_SCALE = 0.05
+
+
 def xyz_to_latlng(xyz):
     xyz = xyz / np.linalg.norm(
         xyz,
@@ -87,15 +90,19 @@ def print_metrics(
 ):
     print()
     print(name)
+
     print(
         f"Median: {metrics['median']:.2f} km"
     )
+
     print(
         f"Mean: {metrics['mean']:.2f} km"
     )
+
     print(
         f"<200 km: {metrics['within_200']:.2f}%"
     )
+
     print(
         f"<750 km: {metrics['within_750']:.2f}%"
     )
@@ -158,7 +165,9 @@ def main():
 
     centers_xyz = np.load(
         centers_path
-    ).astype(np.float32)
+    ).astype(
+        np.float32
+    )
 
     _, val_loader = (
         create_cluster_country_residual_xyz_dataloaders(
@@ -177,7 +186,9 @@ def main():
         num_clusters=args.num_clusters,
         num_countries=args.num_countries,
         pretrained=False,
-    ).to(device)
+    ).to(
+        device
+    )
 
     model.load_state_dict(
         torch.load(
@@ -201,11 +212,16 @@ def main():
         .numpy()
     )
 
-    residual_predictions = (
+    residual_predictions_scaled = (
         val_metrics[
             "residual_predictions"
         ]
         .numpy()
+    )
+
+    predicted_residuals = (
+        RESIDUAL_SCALE
+        * residual_predictions_scaled
     )
 
     cluster_only_xyz = (
@@ -214,17 +230,21 @@ def main():
         ]
     )
 
-    residual_xyz = (
+    refined_xyz = (
         cluster_only_xyz
-        + residual_predictions
+        + predicted_residuals
     )
 
-    residual_xyz = (
-        residual_xyz
-        / np.linalg.norm(
-            residual_xyz,
-            axis=1,
-            keepdims=True,
+    refined_xyz = (
+        refined_xyz
+        / np.clip(
+            np.linalg.norm(
+                refined_xyz,
+                axis=1,
+                keepdims=True,
+            ),
+            1e-12,
+            None,
         )
     )
 
@@ -252,7 +272,7 @@ def main():
     )
 
     residual_metrics = compute_metrics(
-        residual_xyz,
+        refined_xyz,
         true_coordinates,
     )
 
@@ -279,4 +299,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
+    
