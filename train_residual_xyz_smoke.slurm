@@ -11,7 +11,7 @@ set -e
 
 cd ~/deep-learning-final-project-geolocation
 
-source .venv/bin/activate
+source .venv-cluster/bin/activate
 
 mkdir -p logs
 
