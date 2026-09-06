@@ -27,6 +27,23 @@ At inference time, the model predicts a geographic cluster. The corresponding cl
 
 The country head is used as auxiliary supervision during training. The final submitted coordinates are obtained from the geographic cluster prediction.
 
+## Validation Evaluation
+
+To reproduce the held-out validation metrics:
+
+```bash
+python3 -m src.datasets.split
+
+python3 -m src.create_cluster_variants \
+  --clusters 128 \
+  --save-files
+
+python3 -m src.evaluate_validation \
+  --checkpoint checkpoints/cluster_country/validation_k128_cw020.pth \
+  --num-clusters 128 \
+  --num-countries 12 \
+  --batch-size 64 \
+  --num-workers 4
 
 ## Validation Results
 
