@@ -138,7 +138,7 @@ def parse_args():
     parser.add_argument(
         "--output",
         type=str,
-        default="predictions_residual.csv",
+        default="predictions.csv",
     )
 
     parser.add_argument(

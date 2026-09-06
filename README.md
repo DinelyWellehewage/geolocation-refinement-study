@@ -285,6 +285,8 @@ geo_dataset/final/train_cluster128_full.csv
 geo_dataset/final/cluster128_centers_full.npy
 ```
 
+The geographic clusters are created only from the provided labeled training coordinates.
+
 ---
 
 ## 2. Train the Full-Data Baseline
@@ -334,6 +336,7 @@ python3 -m src.main_cluster_country_residual_xyz_final \
   --weight-decay 0.001 \
   --country-weight 0.20 \
   --residual-weight 1.0 \
+  --label-smoothing 0.1 \
   --num-workers 4 \
   --seed 42 \
   --init-checkpoint checkpoints/final/final_k128_imagenet_cw020.pth \
@@ -376,35 +379,29 @@ using one NVIDIA A40 GPU.
 
 # Generating Predictions
 
-## Baseline Predictions
-
-The baseline checkpoint can reproduce the original baseline predictions:
-
-```bash
-python3 -m src.predict_holdout \
-  --checkpoint checkpoints/final/final_k128_imagenet_cw020.pth \
-  --centers geo_dataset/final/cluster128_centers_full.npy \
-  --image-dir geo_dataset/holdout_public \
-  --output predictions.csv
-```
-
-## Residual Predictions
-
-The final residual checkpoint can generate the refined predictions:
+The final residual checkpoint can generate the required `predictions.csv` file:
 
 ```bash
 python3 -m src.predict_holdout_residual_xyz \
   --checkpoint checkpoints/final/final_k128_residual_xyz_baseline_init_rw1.pth \
   --centers geo_dataset/final/cluster128_centers_full.npy \
   --image-dir geo_dataset/holdout_public \
-  --output predictions_residual.csv \
+  --output predictions.csv \
   --num-clusters 128 \
   --num-countries 12 \
   --batch-size 64 \
   --num-workers 4
 ```
 
-`predictions_residual.csv` contains exactly 2,400 prediction rows with the required columns:
+The prediction script also defaults to:
+
+```text
+predictions.csv
+```
+
+when `--output` is not specified.
+
+The generated file contains exactly 2,400 prediction rows with the required columns:
 
 ```text
 filename,pred_lat,pred_lng
@@ -419,7 +416,6 @@ filename,pred_lat,pred_lng
 ├── README.md
 ├── requirements.txt
 ├── predictions.csv
-├── predictions_residual.csv
 ├── train_final_k128.slurm
 ├── train_final_residual_xyz.slurm
 │
@@ -469,13 +465,13 @@ filename,pred_lat,pred_lng
 
 ## Output Format
 
-The prediction files follow the required format:
+The final prediction file follows the required format:
 
 ```text
 filename,pred_lat,pred_lng
 ```
 
-The residual prediction file contains:
+The final `predictions.csv` contains:
 
 - 2,400 prediction rows
 - one row for every image in `holdout_public/`
@@ -487,12 +483,12 @@ The residual prediction file contains:
 
 ## Final Model Files
 
-The files required to reproduce the residual predictions are:
+The files required to reproduce the final predictions are:
 
 ```text
 checkpoints/final/final_k128_residual_xyz_baseline_init_rw1.pth
 geo_dataset/final/cluster128_centers_full.npy
-predictions_residual.csv
+predictions.csv
 ```
 
 The baseline checkpoint is also retained because it is used to initialize residual fine-tuning:
