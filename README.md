@@ -2,39 +2,47 @@
 
 ## Overview
 
-This repository contains the final solution for the Image Geolocation Challenge.
+This repository contains the final solution for the **Image Geolocation Challenge**.
 
-Given a street-level image from one of 12 European countries, the model predicts its geographic coordinates (latitude and longitude).
+Given a 512 × 512 street-level image from one of 12 European countries, the model predicts its geographic coordinates as latitude and longitude.
 
-The final approach combines geographic cluster classification with bounded local coordinate refinement on the 3D unit sphere.
+The final approach combines:
+
+- geographic cluster classification,
+- auxiliary country classification,
+- and bounded local coordinate refinement on the 3D unit sphere.
+
+The final model contains **4,385,215 parameters**, remaining below the challenge limit of 5,000,000 parameters.
 
 ---
 
 ## Final Method
 
-The method is trained in two stages.
+The final model is trained in two stages.
 
 ### Stage 1 — Geographic Cluster Classification
 
-Training coordinates are converted from latitude/longitude to 3D unit-sphere coordinates.
+Training coordinates are first converted from latitude/longitude to 3D unit-sphere coordinates.
 
-KMeans is then applied to the training coordinates to create 128 geographic clusters.
+KMeans is then applied to the training coordinates to create **128 geographic clusters**.
 
-The baseline model consists of:
+The Stage 1 model consists of:
 
-- MobileNetV3-Large backbone
-- 128-class geographic cluster prediction head
-- 12-class auxiliary country prediction head
+- MobileNetV3-Large backbone,
+- 128-class geographic cluster prediction head,
+- 12-class auxiliary country prediction head.
+
+The MobileNetV3-Large backbone is initialized using publicly available ImageNet pretrained weights.
 
 The country head provides auxiliary supervision during training.
 
-Without residual refinement, inference selects the most likely geographic cluster and uses its cluster center as the predicted location.
+Without residual refinement, inference selects the most likely geographic cluster and uses the corresponding cluster center as the predicted location.
 
 ### Stage 2 — Spherical Residual Refinement
 
-A three-dimensional residual head is added to the baseline model.
+A three-dimensional residual head is added to the Stage 1 model.
 
-For a training location with unit-sphere coordinate `true_xyz` and geographic cluster center `center_xyz`, the residual target is:
+For a training location with unit-sphere coordinate `true_xyz` and assigned geographic cluster center `center_xyz`, the residual target is:
 
 ```text
 (true_xyz - center_xyz) / 0.05
@@ -52,23 +60,50 @@ predicted_xyz =
 
 The resulting vector is normalized back onto the unit sphere and converted to latitude and longitude.
 
-The residual head is zero-initialized, while the MobileNetV3 backbone, cluster head, and country head are initialized from the trained K=128 + country baseline checkpoint.
+The residual head is zero-initialized. The MobileNetV3 backbone, cluster head, and country head are initialized from the trained Stage 1 K=128 + country checkpoint.
 
-The complete network is then jointly fine-tuned using the residual objective.
+The complete network is then jointly fine-tuned.
 
-This allows the cluster classifier to provide coarse geographic localization while the residual head performs local coordinate refinement.
+This gives the model two complementary localization mechanisms:
+
+1. **Geographic cluster classification** provides coarse localization.
+2. **Spherical residual prediction** provides local coordinate refinement around the predicted cluster center.
+
+---
+
+## Validation Protocol
+
+A held-out subset of the provided labeled training data was used during model development.
+
+The split is stratified by country using random seed 42.
+
+The resulting development split contains:
+
+```text
+Training images:   9,406
+Validation images: 2,352
+Total:            11,758
+```
+
+KMeans geographic clusters used for validation are fitted only on the training portion of this split.
+
+The hidden public-holdout labels are not used for model selection or validation.
 
 ---
 
 ## Validation Evaluation
 
-A held-out subset of the provided labeled training data was used during model development.
+The validation artifacts required by the evaluation scripts are included in the repository:
 
-The hidden holdout labels were not used for model selection or evaluation.
+```text
+geo_dataset/train_cluster128.csv
+geo_dataset/val_cluster128.csv
+geo_dataset/cluster128_centers_xyz.npy
+```
 
-### Baseline Evaluation
+### Recreate the Validation Split
 
-To recreate the validation split and K=128 geographic clusters:
+The validation split and K=128 cluster assignments can also be recreated with:
 
 ```bash
 python3 -m src.datasets.split
@@ -78,7 +113,7 @@ python3 -m src.create_cluster_variants \
   --save-files
 ```
 
-Evaluate the K=128 + country baseline:
+### Evaluate the K=128 + Country Baseline
 
 ```bash
 python3 -m src.evaluate_validation \
@@ -89,9 +124,7 @@ python3 -m src.evaluate_validation \
   --num-workers 4
 ```
 
-### Residual Evaluation
-
-Evaluate the jointly fine-tuned spherical residual model:
+### Evaluate the Final Residual Architecture
 
 ```bash
 python3 -m src.evaluate_residual_validation \
@@ -102,10 +135,12 @@ python3 -m src.evaluate_residual_validation \
   --num-workers 4
 ```
 
-The contribution of the residual itself can be evaluated using:
+### Evaluate the Residual Contribution
+
+The contribution of the residual itself can be evaluated using the analysis script in `experiments/`:
 
 ```bash
-python3 -m src.evaluate_residual_xyz \
+python3 -m experiments.evaluate_residual_xyz \
   --checkpoint checkpoints/cluster_country_residual_xyz/k128_residual_xyz_baseline_init_rw1.pth \
   --num-clusters 128 \
   --num-countries 12 \
@@ -126,27 +161,35 @@ python3 -m src.evaluate_residual_xyz \
 | K=128 cluster + country | 102.24 | **463.24** | **61.22%** | **79.21%** |
 | **K=128 cluster + country + spherical residual** | **97.95** | 467.06 | 60.88% | 78.57% |
 
-Increasing the number of geographic clusters substantially improved the primary median localization error.
+Direct coordinate regression produced a median localization error of **284.79 km**.
 
-Direct coordinate regression produced a median error of 284.79 km. Geographic classification with K=128 clusters and auxiliary country supervision reduced this to 102.24 km.
+Replacing direct regression with geographic classification substantially improved the primary metric. Increasing the number of geographic clusters further improved median localization accuracy, with K=128 + auxiliary country supervision reaching **102.24 km**.
 
-Adding bounded spherical residual refinement and jointly fine-tuning the baseline further reduced the median error to **97.95 km**, the best validation median obtained during model development.
+Joint spherical residual refinement reduced the median error further to **97.95 km**, the best validation median obtained during model development.
 
-Compared with the K=128 + country baseline, this reduces median error by 4.29 km, or approximately 4.2%.
+Compared with the K=128 + country baseline:
 
-The residual model does not improve every secondary metric. The baseline retains a slightly better mean error and slightly higher <200 km and <750 km accuracy. The residual model was selected because median haversine distance is the primary challenge metric.
+```text
+102.24 km → 97.95 km
+```
+
+This is an improvement of **4.29 km**, or approximately **4.2%**, in median haversine error.
+
+The residual model does not improve every secondary metric. The K=128 + country baseline retains a slightly better mean error and slightly higher `<200 km` and `<750 km` accuracy.
+
+The residual model was selected as the final method because **median haversine distance is the primary challenge metric**.
 
 ---
 
-## Residual Ablation
+## Residual Ablations
 
-Additional experiments were performed to determine where the residual improvement originates.
+Additional experiments were performed to determine whether the improvement originates from the residual prediction itself or from general fine-tuning of the network.
 
 ### Frozen Baseline + Residual Head
 
-The MobileNetV3 backbone, cluster head, and country head were frozen and only the new residual head was trained.
+In this ablation, the MobileNetV3 backbone, cluster head, and country head were frozen while the newly added residual head was trained.
 
-Only 3,843 parameters were trainable in this experiment.
+The residual head contains only **3,843 trainable parameters**.
 
 | Method | Median (km) ↓ | Mean (km) ↓ | <200 km ↑ | <750 km ↑ |
 |---|---:|---:|---:|---:|
@@ -154,26 +197,28 @@ Only 3,843 parameters were trainable in this experiment.
 | Frozen baseline + residual | 103.41 | **462.71** | **61.82%** | **79.34%** |
 | Jointly fine-tuned residual | **97.95** | 467.06 | 60.88% | 78.57% |
 
-Training only the residual head did not improve the median error. This indicates that joint adaptation of the shared representation and output heads is important for the improvement in the primary metric.
+Training only the residual head did not improve the primary median metric.
+
+The best median was obtained when the complete network was jointly fine-tuned.
 
 ### Residual Contribution Within the Joint Model
 
-The same jointly fine-tuned checkpoint was also evaluated with and without applying its residual prediction.
+The same jointly fine-tuned checkpoint was evaluated both with and without applying its predicted residual.
 
 | Decoding | Median (km) ↓ | Mean (km) ↓ | <200 km ↑ | <750 km ↑ |
 |---|---:|---:|---:|---:|
 | Cluster center only | 102.51 | 470.03 | 60.63% | 78.36% |
 | Cluster center + residual | **97.95** | **467.06** | **60.88%** | **78.57%** |
 
-For the same trained network, applying the learned residual reduces median error from 102.51 km to 97.95 km.
+For the same trained network, applying the learned spherical residual reduces median error from **102.51 km to 97.95 km**.
 
-Therefore, the improvement is not explained only by changes to the cluster classifier. The learned spherical residual itself provides useful local coordinate refinement.
+Therefore, the improvement is not explained only by changes to the cluster classifier during joint fine-tuning. The learned residual itself provides useful local coordinate refinement.
 
 ---
 
 ## Final Configuration
 
-### Baseline Training
+### Stage 1 — Baseline Training
 
 | Setting | Value |
 |---|---:|
@@ -187,9 +232,9 @@ Therefore, the improvement is not explained only by changes to the cluster class
 | Label smoothing | 0.10 |
 | Random seed | 42 |
 
-The baseline uses a MobileNetV3-Large backbone initialized with publicly available ImageNet pretrained weights.
+The backbone is MobileNetV3-Large initialized with publicly available ImageNet pretrained weights.
 
-### Residual Fine-Tuning
+### Stage 2 — Residual Fine-Tuning
 
 | Setting | Value |
 |---|---:|
@@ -210,19 +255,39 @@ The baseline uses a MobileNetV3-Large backbone initialized with publicly availab
 | Label smoothing | 0.10 |
 | Random seed | 42 |
 
+Six epochs are used for the final full-data residual fine-tuning because the best validation median during model development was obtained at epoch 6.
+
 ---
 
 ## Parameter Count
 
-The final residual model contains:
+The Stage 1 K=128 + country model contains:
+
+```text
+4,381,372 parameters
+```
+
+The spherical residual head adds:
+
+```text
+3,843 parameters
+```
+
+The complete final model therefore contains:
 
 ```text
 4,385,215 parameters
 ```
 
-This is below the challenge limit of 5,000,000 parameters.
+This is below the challenge limit of:
 
-The residual head adds only 3,843 parameters to the 4,381,372-parameter K=128 + country baseline.
+```text
+5,000,000 parameters
+```
+
+The two training checkpoints should not be interpreted as two models used simultaneously at inference time.
+
+The Stage 1 checkpoint is used only to initialize Stage 2 training. The final Stage 2 checkpoint contains the complete network used for prediction.
 
 ---
 
@@ -247,30 +312,63 @@ geo_dataset/
 filename,country,iso,lat,lng
 ```
 
+The 12 countries represented in the challenge are:
+
+- Belarus
+- Finland
+- France
+- Germany
+- Iceland
+- Italy
+- Norway
+- Poland
+- Spain
+- Sweden
+- Turkey
+- United Kingdom
+
 All geolocation model training and fine-tuning use only the labeled images supplied with the challenge.
 
-No additional geolocation images are added to the training dataset.
+No external, scraped, downloaded, or generated geolocation training images are used.
+
+Publicly available ImageNet pretrained weights are used only to initialize the MobileNetV3-Large backbone.
 
 ---
 
 ## Installation
 
-Create a Python environment and install the required packages:
+Create and activate a Python virtual environment:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+```
 
+Install the required packages:
+
+```bash
 pip install -r requirements.txt
 ```
 
 ---
 
-# Training
+# Training the Final Model
+
+The final model is trained in three steps:
+
+```text
+Create K=128 clusters
+        ↓
+Stage 1: train cluster + country model
+        ↓
+Stage 2: jointly fine-tune spherical residual model
+        ↓
+Final checkpoint
+```
 
 ## 1. Create Full-Data Geographic Clusters
 
-Create K=128 geographic clusters from all provided labeled training coordinates:
+Create K=128 geographic clusters using all provided labeled training coordinates:
 
 ```bash
 python3 -m src.create_final_clusters \
@@ -285,13 +383,13 @@ geo_dataset/final/train_cluster128_full.csv
 geo_dataset/final/cluster128_centers_full.npy
 ```
 
-The geographic clusters are created only from the provided labeled training coordinates.
+The geographic clusters are created only from the coordinates contained in the provided challenge training labels.
 
 ---
 
-## 2. Train the Full-Data Baseline
+## 2. Train Stage 1 — Full-Data Cluster + Country Model
 
-Train the K=128 + country model:
+Run:
 
 ```bash
 python3 -m src.main_cluster_country_final \
@@ -308,7 +406,7 @@ python3 -m src.main_cluster_country_final \
   --checkpoint-name final_k128_imagenet_cw020.pth
 ```
 
-The resulting baseline checkpoint is:
+The resulting Stage 1 checkpoint is:
 
 ```text
 checkpoints/final/final_k128_imagenet_cw020.pth
@@ -322,9 +420,9 @@ sbatch train_final_k128.slurm
 
 ---
 
-## 3. Fine-Tune the Full-Data Residual Model
+## 3. Train Stage 2 — Full-Data Spherical Residual Model
 
-Initialize from the full-data baseline and jointly fine-tune the spherical residual model:
+Initialize Stage 2 from the Stage 1 checkpoint and jointly fine-tune the complete network:
 
 ```bash
 python3 -m src.main_cluster_country_residual_xyz_final \
@@ -343,23 +441,25 @@ python3 -m src.main_cluster_country_residual_xyz_final \
   --checkpoint-name final_k128_residual_xyz_baseline_init_rw1.pth
 ```
 
-For SLURM environments:
-
-```bash
-sbatch train_final_residual_xyz.slurm
-```
-
 The resulting final checkpoint is:
 
 ```text
 checkpoints/final/final_k128_residual_xyz_baseline_init_rw1.pth
 ```
 
+For SLURM environments:
+
+```bash
+sbatch train_final_residual_xyz.slurm
+```
+
+Only this final Stage 2 checkpoint is required during inference.
+
 ---
 
 ## Training Time
 
-The original full-data K=128 + country training run took approximately:
+The original full-data Stage 1 K=128 + country training run took approximately:
 
 ```text
 16 minutes 53 seconds
@@ -367,7 +467,7 @@ The original full-data K=128 + country training run took approximately:
 
 using one NVIDIA A40 GPU.
 
-The six-epoch residual fine-tuning stage took approximately:
+The six-epoch Stage 2 residual fine-tuning run took approximately:
 
 ```text
 2 minutes 58 seconds
@@ -375,11 +475,19 @@ The six-epoch residual fine-tuning stage took approximately:
 
 using one NVIDIA A40 GPU.
 
+Therefore, reproducing both training stages from scratch takes approximately:
+
+```text
+19 minutes 51 seconds
+```
+
+on the same hardware, excluding cluster-generation and environment-setup time.
+
 ---
 
 # Generating Predictions
 
-The final residual checkpoint can generate the required `predictions.csv` file:
+Generate the final `predictions.csv` using the Stage 2 checkpoint:
 
 ```bash
 python3 -m src.predict_holdout_residual_xyz \
@@ -393,15 +501,13 @@ python3 -m src.predict_holdout_residual_xyz \
   --num-workers 4
 ```
 
-The prediction script also defaults to:
+If `--output` is omitted, the prediction script defaults to:
 
 ```text
 predictions.csv
 ```
 
-when `--output` is not specified.
-
-The generated file contains exactly 2,400 prediction rows with the required columns:
+The generated file contains exactly **2,400 prediction rows** with the required columns:
 
 ```text
 filename,pred_lat,pred_lng
@@ -409,39 +515,89 @@ filename,pred_lat,pred_lng
 
 ---
 
-## Project Structure
+## Output Format
+
+The final prediction file follows the required challenge format:
+
+```text
+filename,pred_lat,pred_lng
+```
+
+The included `predictions.csv` contains:
+
+- 2,400 prediction rows,
+- 2,400 unique filenames,
+- one prediction for every image in `holdout_public/`,
+- no duplicate filenames,
+- no missing holdout images,
+- latitude and longitude in decimal degrees,
+- no additional index column.
+
+---
+
+## Repository Organization
+
+The final submission pipeline is implemented in `src/`.
+
+Development and ablation runners are stored separately in `experiments/` so that the final training and inference path remains unambiguous.
+
+The two root SLURM scripts correspond directly to the two final training stages.
 
 ```text
 .
+├── CHALLENGE.md
 ├── README.md
 ├── requirements.txt
 ├── predictions.csv
+│
 ├── train_final_k128.slurm
 ├── train_final_residual_xyz.slurm
 │
 ├── checkpoints/
+│   ├── cluster_country/
+│   │   ├── cluster128_imagenet_cluster_only_seed42.pth
+│   │   ├── cluster128_imagenet_country_cw020_seed42.pth
+│   │   ├── cluster80_imagenet_country_cw020_seed42.pth
+│   │   ├── cluster96_imagenet_country_cw020_seed42.pth
+│   │   └── validation_k128_cw020.pth
+│   │
+│   ├── cluster_country_residual_xyz/
+│   │   └── k128_residual_xyz_baseline_init_rw1.pth
+│   │
+│   ├── regression_pretrained/
+│   │   └── regression_imagenet_seed42.pth
+│   │
 │   └── final/
 │       ├── final_k128_imagenet_cw020.pth
 │       └── final_k128_residual_xyz_baseline_init_rw1.pth
 │
 ├── geo_dataset/
+│   ├── train_cluster128.csv
+│   ├── val_cluster128.csv
+│   ├── cluster128_centers_xyz.npy
+│   │
 │   └── final/
 │       ├── train_cluster128_full.csv
 │       └── cluster128_centers_full.npy
 │
+├── experiments/
+│   ├── README.md
+│   ├── main_cluster_country.py
+│   ├── main_cluster_country_residual_xyz.py
+│   ├── main_cluster_country_residual_xyz_frozen.py
+│   └── evaluate_residual_xyz.py
+│
 └── src/
+    ├── create_cluster_variants.py
     ├── create_final_clusters.py
-    ├── main_cluster_country_final.py
-    ├── main_cluster_country_residual_xyz.py
-    ├── main_cluster_country_residual_xyz_final.py
-    ├── main_cluster_country_residual_xyz_frozen.py
     ├── evaluate_validation.py
     ├── evaluate_residual_validation.py
-    ├── evaluate_residual_xyz.py
-    ├── predict_holdout.py
+    ├── main_cluster_country_final.py
+    ├── main_cluster_country_residual_xyz_final.py
     ├── predict_holdout_residual_xyz.py
     │
     ├── datasets/
+    │   ├── split.py
     │   ├── dataset_cluster_country.py
     │   ├── dataset_cluster_country_residual_xyz.py
     │   ├── dataloaders_cluster_country.py
@@ -463,27 +619,50 @@ filename,pred_lat,pred_lng
 
 ---
 
-## Output Format
+## Final Pipeline
 
-The final prediction file follows the required format:
+The files directly involved in producing the final model and predictions are:
 
 ```text
-filename,pred_lat,pred_lng
+src/create_final_clusters.py
+
+src/main_cluster_country_final.py
+        ↓
+checkpoints/final/final_k128_imagenet_cw020.pth
+
+src/main_cluster_country_residual_xyz_final.py
+        ↓
+checkpoints/final/final_k128_residual_xyz_baseline_init_rw1.pth
+
+src/predict_holdout_residual_xyz.py
+        ↓
+predictions.csv
 ```
 
-The final `predictions.csv` contains:
+The supporting model, dataset, training, and metric implementations are contained in the corresponding `src/models/`, `src/datasets/`, `src/training/`, and `src/utils/` directories.
 
-- 2,400 prediction rows
-- one row for every image in `holdout_public/`
-- no duplicate filenames
-- no missing holdout images
-- latitude and longitude in decimal degrees
+---
+
+## Experiment Code
+
+The `experiments/` directory contains development and ablation runners used during model selection.
+
+These scripts are retained to document the experimental process but are not part of the final inference pipeline.
+
+They include:
+
+- `main_cluster_country.py` — geographic cluster + country validation experiments,
+- `main_cluster_country_residual_xyz.py` — joint spherical residual experiments,
+- `main_cluster_country_residual_xyz_frozen.py` — frozen-baseline residual-head ablation,
+- `evaluate_residual_xyz.py` — cluster-center versus residual decoding analysis.
+
+Historical checkpoints from the principal experiments are retained under `checkpoints/`.
 
 ---
 
 ## Final Model Files
 
-The files required to reproduce the final predictions are:
+The files required to reproduce the submitted holdout predictions are:
 
 ```text
 checkpoints/final/final_k128_residual_xyz_baseline_init_rw1.pth
@@ -491,8 +670,10 @@ geo_dataset/final/cluster128_centers_full.npy
 predictions.csv
 ```
 
-The baseline checkpoint is also retained because it is used to initialize residual fine-tuning:
+The Stage 1 checkpoint is additionally retained because it is required to reproduce Stage 2 training:
 
 ```text
 checkpoints/final/final_k128_imagenet_cw020.pth
 ```
+
+At inference time, only the final residual checkpoint is loaded as the model. The Stage 1 and Stage 2 checkpoints are **not** used as an ensemble.
