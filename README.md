@@ -45,6 +45,8 @@ python3 -m src.evaluate_validation \
   --batch-size 64 \
   --num-workers 4
 
+```
+
 ## Validation Results
 
 A held-out subset of the provided labeled training data was used during
