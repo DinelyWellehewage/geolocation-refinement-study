@@ -100,6 +100,17 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--init-checkpoint",
+        type=str,
+        default=None,
+        help=(
+            "Optional baseline cluster-country checkpoint "
+            "used to initialize the backbone, cluster head, "
+            "and country head."
+        ),
+    )
+
+    parser.add_argument(
         "--checkpoint-name",
         type=str,
         default=(
@@ -159,10 +170,85 @@ def xyz_to_latlng(xyz):
     )
 
 
+def load_baseline_checkpoint(
+    model,
+    checkpoint_path,
+    device,
+):
+    print(
+        "Initializing from baseline checkpoint:",
+        checkpoint_path,
+    )
+
+    baseline_state = torch.load(
+        checkpoint_path,
+        map_location=device,
+    )
+
+    current_state = model.state_dict()
+
+    compatible_state = {
+        key: value
+        for key, value in baseline_state.items()
+        if (
+            key in current_state
+            and current_state[key].shape == value.shape
+        )
+    }
+
+    missing_keys = sorted(
+        set(current_state.keys())
+        - set(compatible_state.keys())
+    )
+
+    unexpected_keys = sorted(
+        set(baseline_state.keys())
+        - set(current_state.keys())
+    )
+
+    model.load_state_dict(
+        compatible_state,
+        strict=False,
+    )
+
+    print(
+        "Loaded baseline tensors:",
+        len(compatible_state),
+    )
+
+    print(
+        "New/uninitialized tensors:",
+        missing_keys,
+    )
+
+    if unexpected_keys:
+        print(
+            "Unused baseline tensors:",
+            unexpected_keys,
+        )
+
+    expected_new = {
+        "residual_head.weight",
+        "residual_head.bias",
+    }
+
+    actual_new = set(
+        missing_keys
+    )
+
+    if actual_new != expected_new:
+        print(
+            "Warning: expected only the residual head "
+            "to remain randomly initialized."
+        )
+
+
 def main():
     args = parse_args()
 
-    set_seed(args.seed)
+    set_seed(
+        args.seed
+    )
 
     k = args.num_clusters
 
@@ -171,24 +257,56 @@ def main():
         "cluster + auxiliary country "
         "+ spherical XYZ residual"
     )
-    print("Pretrained:", args.pretrained)
-    print("Clusters:", k)
-    print("Countries:", args.num_countries)
-    print("Learning rate:", args.lr)
-    print("Weight decay:", args.weight_decay)
+
+    print(
+        "Pretrained:",
+        args.pretrained,
+    )
+
+    print(
+        "Clusters:",
+        k,
+    )
+
+    print(
+        "Countries:",
+        args.num_countries,
+    )
+
+    print(
+        "Learning rate:",
+        args.lr,
+    )
+
+    print(
+        "Weight decay:",
+        args.weight_decay,
+    )
+
     print(
         "Country weight:",
         args.country_weight,
     )
+
     print(
         "Residual weight:",
         args.residual_weight,
     )
+
     print(
         "Label smoothing:",
         args.label_smoothing,
     )
-    print("Random seed:", args.seed)
+
+    print(
+        "Random seed:",
+        args.seed,
+    )
+
+    print(
+        "Initialization checkpoint:",
+        args.init_checkpoint,
+    )
 
     device = torch.device(
         "cuda"
@@ -196,7 +314,10 @@ def main():
         else "cpu"
     )
 
-    print("Using device:", device)
+    print(
+        "Using device:",
+        device,
+    )
 
     train_csv = (
         f"geo_dataset/"
@@ -235,6 +356,13 @@ def main():
         pretrained=args.pretrained,
     ).to(device)
 
+    if args.init_checkpoint is not None:
+        load_baseline_checkpoint(
+            model=model,
+            checkpoint_path=args.init_checkpoint,
+            device=device,
+        )
+
     num_params = sum(
         p.numel()
         for p in model.parameters()
@@ -244,6 +372,7 @@ def main():
         "Parameter count:",
         num_params,
     )
+
     print(
         "Under 5 million:",
         num_params <= 5_000_000,
@@ -257,7 +386,9 @@ def main():
 
     centers_xyz = np.load(
         centers_path
-    ).astype(np.float32)
+    ).astype(
+        np.float32
+    )
 
     optimizer = AdamW(
         model.parameters(),
@@ -307,9 +438,13 @@ def main():
         args.checkpoint_name,
     )
 
-    best_median_km = float("inf")
+    best_median_km = float(
+        "inf"
+    )
 
-    for epoch in range(args.epochs):
+    for epoch in range(
+        args.epochs
+    ):
         train_metrics = (
             train_one_epoch_cluster_country_residual_xyz(
                 model=model,
@@ -344,22 +479,17 @@ def main():
             .numpy()
         )
 
-        # Decode the predicted geographic cluster
-        # into its unit-sphere center.
         predicted_centers_xyz = (
             centers_xyz[
                 predicted_clusters
             ]
         )
 
-        # Refine the cluster center using the
-        # learned local XYZ correction.
         predicted_xyz = (
             predicted_centers_xyz
             + predicted_residuals
         )
 
-        # Project back onto the unit sphere.
         norms = np.linalg.norm(
             predicted_xyz,
             axis=1,
@@ -454,8 +584,13 @@ def main():
             f"{current_lr:.6f}"
         )
 
-        if median_km < best_median_km:
-            best_median_km = median_km
+        if (
+            median_km
+            < best_median_km
+        ):
+            best_median_km = (
+                median_km
+            )
 
             torch.save(
                 model.state_dict(),
@@ -470,10 +605,12 @@ def main():
             )
 
     print()
+
     print(
         "Best validation median:",
         f"{best_median_km:.2f} km",
     )
+
     print(
         "Checkpoint:",
         checkpoint_path,
@@ -482,3 +619,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
