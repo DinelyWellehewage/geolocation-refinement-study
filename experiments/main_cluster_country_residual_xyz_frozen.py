@@ -304,7 +304,9 @@ def train_one_epoch_frozen_residual(
     optimizer,
     device,
 ):
-    model.train()
+    # Keep baseline BatchNorm statistics and dropout fixed.
+    model.eval()
+    model.residual_head.train()
 
     residual_loss_fn = (
         nn.SmoothL1Loss()
